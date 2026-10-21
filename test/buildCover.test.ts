@@ -9,7 +9,7 @@ import { outerPlaced } from '../src/layout/resolve';
 import { DEFAULT_STYLE_ID, getStyle, listStyles, parseStyleParams, resolveStyle, type AnyCoverStyle } from '../src/styles';
 import { minimalStyle } from '../src/styles/minimal';
 import { expectSolid, getKit } from './helpers/manifold';
-import { column, plainFloorPoint, topOfIntersection } from './helpers/probes';
+import { column, pocketProbePoints, topOfIntersection } from './helpers/probes';
 
 let kit: Kit;
 beforeAll(async () => {
@@ -42,7 +42,7 @@ describe('buildCover (staged: body − (cavity − wells) − cuts)', () => {
       const preview = buildCover(kit, presetConfig('ch-sd-1x1')).manifold.numTri();
       const fine = buildCover(exportKit, presetConfig('ch-sd-1x1')).manifold;
       expect(fine.numTri()).toBeGreaterThan(preview);
-      expect(fine.genus()).toBe(2);
+      expect(fine.genus()).toBe(1); // the bridge access hole
       return null;
     });
   });
@@ -62,8 +62,8 @@ describe('buildCover (staged: body − (cavity − wells) − cuts)', () => {
   it('counts openings and access holes over the cavity as through-holes', () => {
     withScope(() => {
       const { frame } = prepareCover(kit, presetConfig('ch-sd-2x2'));
-      // two pockets × two access holes + two outlets
-      expect(expectedGenus(frame)).toBe(6);
+      // two pockets × one bridge hole + two outlets
+      expect(expectedGenus(frame)).toBe(4);
       // a hole entirely over the skirt would be blind
       const cav = outerPlaced(frame, frame.skirtT);
       const skirtOnly = { ...frame, features: frame.features.filter((f) => f.kind === 'pocket').slice(0, 1) } as typeof frame;
@@ -85,8 +85,8 @@ describe('buildCover (staged: body − (cavity − wells) − cuts)', () => {
     };
     withScope(() => {
       const b = buildCover(kit, presetConfig('ch-sd-1x1'), { style: drill });
-      expect(b.expectedGenus).toBe(2);
-      expect(b.manifold.genus()).toBe(3);
+      expect(b.expectedGenus).toBe(1);
+      expect(b.manifold.genus()).toBe(2);
       const err = b.warnings.find((w) => w.code === 'geometry-genus');
       expect(err?.severity).toBe('error');
       return null;
@@ -176,8 +176,9 @@ describe('domed styles: features follow surfaceZ', () => {
       const lift = dome(b.frame, pocket.placed.x, pocket.placed.y) - b.frame.frontZ;
       expect(lift).toBeGreaterThan(0.5);
       expect(pocket.floorZ).toBeCloseTo(flatPocket.floorZ + lift, 9);
-      const [px, py] = plainFloorPoint(pocket);
-      expect(Math.abs(topOfIntersection(b.manifold, column(kit, px, py, -1, 40)) - pocket.floorZ)).toBeLessThan(0.05);
+      for (const [px, py] of pocketProbePoints(pocket, config.bilresa.strip.l).ledge) {
+        expect(Math.abs(topOfIntersection(b.manifold, column(kit, px, py, -1, 40)) - (pocket.floorZ - pocket.stripDepth))).toBeLessThan(0.05);
+      }
       return null;
     });
   });

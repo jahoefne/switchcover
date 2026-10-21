@@ -9,10 +9,24 @@ import type { FeatureCtx, FeatureOptions, FeatureStyle } from './types';
 export { cavity, cavityCeiling } from './cavity';
 export { edgeExtent, faceCut, localFace, type LocalFace } from './face';
 export { opening } from './opening';
-export { POCKET_FEATURES, accessHoles, floorBottom, notch, pocketParts, pocketVoid, pocketWell, stripIndent } from './pocket';
+export {
+  FILLET_SEGMENTS,
+  POCKET_FEATURES,
+  accessHoles,
+  floorBottom,
+  holeExitHeight,
+  notch,
+  notchFloor,
+  pocketParts,
+  pocketVoid,
+  pocketWell,
+  skirtBridge,
+  stripIndent,
+  voidOutlineAt,
+} from './pocket';
 export * from './types';
 
-/** Tools of one resolved feature (pocket: well, void, strip, holes, notch; opening: cut). */
+/** Tools of one resolved feature (pocket: well, nested void, strip indent, bridge hole, notch; opening: cut). */
 export function featureParts(
   kit: Kit,
   frame: CoverFrame,

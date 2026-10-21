@@ -1,7 +1,7 @@
 /**
- * Test-fit part: one pocket (well with a 3 mm rim + all pocket cuts), base at z = 0, built
- * with the same feature functions as the cover. Genus = its access holes (each pierces the
- * standalone floor); the void, strip indent and notch are blind.
+ * Test-fit part: one nested pocket (well with a 3 mm rim + all pocket cuts), base at z = 0, built
+ * with the same feature functions as the cover. Genus = its access holes (the bridge hole pierces
+ * the standalone floor); the void, strip indent and notch are blind.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { ManifoldToplevel } from 'manifold-3d';
@@ -15,7 +15,7 @@ import { liveObjectCount, withScope } from '../src/geometry/kit';
 import { offsetPlaced, placedBounds } from '../src/geometry/shape2d';
 import { layoutConfig } from './helpers/configs';
 import { getKit, getWasm } from './helpers/manifold';
-import { column, intersectionVolume, plainFloorPoint, seatedBilresa, topOfIntersection } from './helpers/probes';
+import { column, intersectionVolume, pocketProbePoints, seatedBilresa, topOfIntersection } from './helpers/probes';
 
 let kit: Kit;
 let wasm: ManifoldToplevel;
@@ -66,17 +66,23 @@ describe.each([
       expect(grams).toBeGreaterThan(3);
       expect(grams).toBeLessThan(30);
 
-      // same floor / strip / holes as the cover
+      // same glue ledges / bridge hole as the cover
       const dz = t.zOffset;
-      const [px, py] = plainFloorPoint(f);
-      expect(topOfIntersection(m, column(kit, px, py, -1, 40))).toBeCloseTo(f.floorZ + dz, 4);
-      expect(topOfIntersection(m, column(kit, f.strip.x, f.strip.y, -1, 40))).toBeCloseTo(f.floorZ - f.stripDepth + dz, 4);
+      const probes = pocketProbePoints(f, config.bilresa.strip.l);
+      for (const [px, py] of probes.ledge) {
+        expect(topOfIntersection(m, column(kit, px, py, -1, 40))).toBeCloseTo(f.floorZ - f.stripDepth + dz, 4);
+      }
+      expect(intersectionVolume(m, column(kit, probes.hole[0], probes.hole[1], -1, 40))).toBeLessThan(1e-9);
+      expect(f.holes).toHaveLength(1);
       for (const h of f.holes) expect(intersectionVolume(m, kit.prism(offsetPlaced(h, -0.2), -1, 40))).toBeLessThan(1e-6);
 
-      // the real Bilresa fits
+      // the real Bilresa fits: its body exactly, its 52 mm strip rim overlaps the 51 mm strip's ledges a little
       const file = BILRESA_VARIANTS[f.variant].model.split('/').pop()!;
-      const device = seatedBilresa(wasm, { ...f, floorZ: f.floorZ + dz }, file);
-      expect(intersectionVolume(m, device)).toBeLessThan(1e-3);
+      const seated = { ...f, floorZ: f.floorZ + dz };
+      const device = seatedBilresa(wasm, seated, file);
+      const big = { shape: { kind: 'roundedRect' as const, w: 500, h: 500, r: 0 }, x: 0, y: 0, rotDeg: 0 };
+      expect(intersectionVolume(m, device.intersect(kit.prism(big, seated.floorZ + 1e-3, 80)))).toBeLessThan(1e-3);
+      expect(intersectionVolume(m, device)).toBeLessThan(10);
       return null;
     });
     expect(liveObjectCount()).toBe(before);

@@ -1,13 +1,15 @@
 /**
  * Test-fit part: one pocket of the cover as a small standalone print (~10–20 g), to check the
- * Bilresa fit and the magnet-strip indent before printing the whole cover.
+ * Bilresa fit (nested pocket), the magnet-strip indent and its glue ledges before printing the
+ * whole cover.
  *
- *   body = pocket well with a TEST_FIT_RIM wall (+ notch backing), floor underside → local face
- *   part = body − (pocket void, strip indent, access holes, notch), base moved to z = 0
+ *   body = nested pocket well with a TEST_FIT_RIM wall (+ strip-ledge slab, notch backing),
+ *          floor underside → local face
+ *   part = body − (pocket void, strip indent, bridge access hole, notch), base moved to z = 0
  *
- * It is built with the SAME feature functions as the cover (only the wall width and the well
- * top differ), so whatever fits here fits in the cover. x/y stay in cover coordinates (the
- * pocket keeps its position); only z is shifted.
+ * It is built with the SAME feature functions as the cover (only the wall width, the well top
+ * and the skirt bridge, which needs a skirt, differ), so whatever fits here fits in the cover.
+ * x/y stay in cover coordinates (the pocket keeps its position); only z is shifted.
  */
 import type { Manifold } from 'manifold-3d';
 import type { CoverConfig } from '../config/schema';
@@ -48,7 +50,7 @@ export function buildTestFit(kit: Kit, config: CoverConfig, featureId?: string, 
   const genus = feature.holes.length;
 
   const { manifold, validation } = withScope(() => {
-    const parts = collectParts(pocketParts(kit, prepared, feature, style, ctx, { wall: TEST_FIT_RIM, top }));
+    const parts = collectParts(pocketParts(kit, prepared, feature, style, ctx, { wall: TEST_FIT_RIM, top, skirtMerge: false }));
     const body = unionTools(kit, parts.add);
     if (!body) throw new Error('Test-fit body is empty.');
     const cuts = unionTools(kit, parts.subtract);

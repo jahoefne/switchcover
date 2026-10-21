@@ -9,6 +9,7 @@ import type { Kit, Placed, Vec2 } from '../../src/geometry/contract';
 import { parseBinaryStl } from '../../src/geometry/export/stl';
 import type { PocketFeature } from '../../src/geometry/features';
 import { offsetPlaced, pointInPlaced, toWorld } from '../../src/geometry/shape2d';
+import { bilresaGhostPlacement } from '../../src/ui/viewer/ghost';
 
 /** A thin square column at (x, y) from z0 to z1. */
 export function column(kit: Kit, x: number, y: number, z0: number, z1: number, size = 0.3): Manifold {
@@ -33,16 +34,40 @@ export function ringPrism(kit: Kit, p: Placed, inner: number, outer: number, z0:
 }
 
 /**
- * A point on the plain pocket floor (no strip indent, no access hole within `keep` mm),
- * as close to the pocket centre as possible.
+ * Probe points of a nested pocket, in world coordinates (pocket frame: u across, v along the
+ * Bilresa's long axis):
+ *  - `ledge`: on the strip's end ledges, ±(strip.l/2 − 2) along the long axis (tops out at
+ *    floorZ − stripDepth);
+ *  - `hole`: the pocket centre, in the bridge hole (nothing above or below);
+ *  - `fillet`: `across` mm from the centre across the long axis (tops out on the fillet wall).
+ */
+export function pocketProbePoints(f: PocketFeature, stripL: number, across = 19): { ledge: Vec2[]; hole: Vec2; fillet: Vec2 } {
+  const along = stripL / 2 - 2;
+  const at = (u: number, v: number) => toWorld({ ...f.placed, x: f.strip.x, y: f.strip.y }, [u, v]);
+  return { ledge: [at(0, along), at(0, -along)], hole: [f.placed.x, f.placed.y], fillet: toWorld(f.placed, [across, 0]) };
+}
+
+/** Expected top of the pocket floor/wall at `across` mm from the centre (horizontal clearance). */
+export function filletTopAt(f: PocketFeature, across: number): number {
+  // The void's half width at height h is (pocket half width) − backFilletInset(r, h).
+  const half = f.placed.shape.kind === 'stadium' ? Math.min(f.placed.shape.w, f.placed.shape.h) / 2 : NaN;
+  const r = f.backFilletR;
+  const inset = half - across; // = r − √(r² − (r − h)²)
+  if (inset >= r) return f.floorZ;
+  return f.floorZ + r - Math.sqrt(r * r - (r - inset) * (r - inset));
+}
+
+/**
+ * A point on the plain pocket floor (no strip indent, no access hole within `keep` mm, at least
+ * `keep` mm inside the floor's flat part), as close to the pocket centre as possible.
  */
 export function plainFloorPoint(f: PocketFeature, keep = 1): Vec2 {
-  const inside = offsetPlaced(f.placed, -2);
+  const inside = offsetPlaced(f.placed, -(f.backFilletR + keep));
   const avoid = [offsetPlaced(f.strip, keep), ...f.holes.map((h) => offsetPlaced(h, keep))];
   let best: Vec2 | null = null;
   let bestD = Infinity;
-  for (let u = -40; u <= 40; u += 0.5) {
-    for (let v = -40; v <= 40; v += 0.5) {
+  for (let u = -40; u <= 40; u += 0.25) {
+    for (let v = -40; v <= 40; v += 0.25) {
       const pt = toWorld(f.placed, [u, v]);
       if (!pointInPlaced(pt, inside) || avoid.some((a) => pointInPlaced(pt, a))) continue;
       const d = Math.hypot(u, v);
@@ -94,11 +119,12 @@ export function signedVolume(positions: ArrayLike<number>, indices: ArrayLike<nu
 }
 
 /**
- * The Bilresa reference model seated in a pocket: rotated 180° about Y (its back, at z = 0 in
- * the STL, faces the floor; the front points out of the wall), rotated by the pocket's rotDeg,
- * moved to the pocket centre with its back `lift` mm above floorZ.
+ * The Bilresa reference model seated in a pocket exactly like the viewer's ghost
+ * (bilresaGhostPlacement): no tilt, rotated by the pocket's rotDeg, moved to the pocket centre
+ * with its back flat `lift` mm above floorZ (front at floorZ + depth + lift).
  */
-export function seatedBilresa(wasm: ManifoldToplevel, f: PocketFeature, file: string, lift = 0.01): Manifold {
+export function seatedBilresa(wasm: ManifoldToplevel, f: PocketFeature, file: string, lift = 0): Manifold {
   const m = manifoldOfMesh(wasm, readStlMesh(modelPath(file)));
-  return m.rotate([0, 180, 0]).rotate([0, 0, f.placed.rotDeg]).translate([f.placed.x, f.placed.y, f.floorZ + lift]);
+  const g = bilresaGhostPlacement(f);
+  return m.rotate([0, 0, g.rotZDeg]).translate([g.position[0], g.position[1], g.position[2] + lift]);
 }

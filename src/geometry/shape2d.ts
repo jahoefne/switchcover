@@ -301,3 +301,22 @@ export function containmentMargin(inner: Placed, outer: Placed): number {
   const { r } = shapeCore(inner.shape);
   return Math.min(...coreWorld(inner).map((v) => insideDistance(outer, v))) - r;
 }
+
+/**
+ * Unit vector from `pt` (inside `p`) towards the nearest point of p's boundary: away from the
+ * nearest core point when pt lies outside the core, towards the nearest core side otherwise.
+ * Exact for every Shape2D (core ⊕ disc).
+ */
+export function outwardDirection(p: Placed, pt: Vec2): Vec2 {
+  const { hx, hy } = shapeCore(p.shape);
+  const [lx, ly] = toLocal(p, pt);
+  const sx = lx < 0 ? -1 : 1;
+  const sy = ly < 0 ? -1 : 1;
+  const qx = Math.abs(lx) - hx;
+  const qy = Math.abs(ly) - hy;
+  let d: Vec2;
+  if (qx > 1e-12 || qy > 1e-12) d = [sx * Math.max(qx, 0), sy * Math.max(qy, 0)];
+  else d = qx >= qy ? [sx, 0] : [0, sy];
+  const len = Math.hypot(d[0], d[1]);
+  return rotateVec([d[0] / len, d[1] / len], p.rotDeg);
+}

@@ -2,7 +2,7 @@
  * Cover builder: CoverConfig → one valid Manifold, built in stages (never one giant boolean):
  *
  *   1. body    = style.outerBody(ctx)                      flat base exactly at z = 0
- *   2. hollow  = union(cavity) − union(feature adds)        pocket wells + notch backings
+ *   2. hollow  = union(cavity) − union(feature adds)        pocket wells, ledge slabs, notch backings
  *      shell   = body − hollow                              ≡ (body − cavity) + adds, clipped
  *                                                           to the body (wells can never poke
  *                                                           through a style's face or edges)
@@ -110,16 +110,18 @@ export function prepareCover(kit: Kit, config: CoverConfig, options: BuildOption
 
 /**
  * Number of through-holes (= genus of the finished cover). The base is open (the cavity
- * reaches below z = 0), so the plain shell is a cup: genus 0. A pocket is a blind recess
- * (well walls + floor), a strip indent is blind (floorT ≥ stripDepth + 1.2) and a finger
- * notch is blind (it stops at floorZ and has its own backing well), so none of them add
- * handles. A through-hole connects the face side to the wall side and adds exactly one:
+ * reaches below z = 0), so the plain shell is a cup: genus 0. A (nested) pocket is a blind
+ * recess (well walls + floor), a strip indent is blind (floorT ≥ stripDepth + 1.2) and a finger
+ * notch is blind (it stops above the floor and has its own backing well, bridged to the skirt
+ * when close to it), so none of them add handles. A through-hole connects the face side to the
+ * wall side and adds exactly one:
  *  - every opening (outlet / passthrough) whose outline overlaps the cavity footprint, since
  *    it cuts the skin into the cavity;
- *  - every access hole whose outline overlaps the cavity footprint, since it pierces the pocket
- *    floor (pocket side = face side) into the cavity below (open to the wall).
+ *  - every access (bridge) hole whose outline overlaps the cavity footprint, since it pierces
+ *    the pocket floor and the foot of the fillet wall (pocket side = face side) into the cavity
+ *    below (open to the wall). The strip later spans it, but that is not part of the print.
  * Holes/openings entirely over the skirt would be blind and are not counted (the resolver's
- * margins make that impossible with sane settings). Two holes of one pocket are two handles.
+ * margins make that impossible with sane settings).
  */
 export function expectedGenus(frame: CoverFrame): number {
   const cav = outerPlaced(frame, frame.skirtT);

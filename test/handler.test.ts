@@ -41,7 +41,7 @@ describe('worker handler', () => {
     expect(r.stl).toBeUndefined();
     expect(r.frame.outer.w).toBe(156.8);
     expect(r.stats.volume).toBeGreaterThan(0);
-    expect(r.stats.genus).toBe(6); // 2 outlets + 2 pockets × 2 access holes
+    expect(r.stats.genus).toBe(4); // 2 outlets + 2 pockets × 1 bridge access hole
     expect(r.stats.ms).toBeGreaterThanOrEqual(0);
     expect(signedVolume(r.positions, r.indices)).toBeCloseTo(r.stats.volume, 0);
     let maxZ = -Infinity;
@@ -89,7 +89,7 @@ describe('worker handler', () => {
     expect(r.stl).toBeInstanceOf(ArrayBuffer);
     expect(transfer).toHaveLength(3);
     expect(r.stl!.byteLength).toBe(84 + 50 * r.stats.tris);
-    expect(r.stats.genus).toBe(2); // the two access holes
+    expect(r.stats.genus).toBe(1); // the bridge access hole
     expect(r.stats.volume).toBeGreaterThan(5_000);
     expect(r.stats.volume).toBeLessThan(25_000); // < 25 cm³ ≈ 30 g PLA
     let minZ = Infinity;

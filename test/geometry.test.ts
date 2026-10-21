@@ -1,23 +1,23 @@
 /**
  * Full-cover geometry probes: every layout (presets + extras) × {box, minimal}.
  *
- * Genus (= number of through-holes): the open-bottom shell is a cup (genus 0); pockets,
- * strip indents and finger notches are blind; every opening and every access hole connects
- * the face side with the wall side and adds exactly one handle. So for these layouts
- * genus = #openings + Σ #access holes (see expectedGenus in src/geometry/buildCover.ts).
+ * Genus (= number of through-holes): the open-bottom shell is a cup (genus 0); nested pockets,
+ * strip indents and finger notches are blind; every opening and every pocket's single bridge
+ * access hole connects the face side with the wall side and adds exactly one handle. So for
+ * these layouts genus = #openings + #pockets (see expectedGenus in src/geometry/buildCover.ts).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ManifoldToplevel } from 'manifold-3d';
 import { BILRESA_VARIANTS } from '../src/config/defaults';
 import { buildCover, type CoverBuild } from '../src/geometry/buildCover';
 import type { EdgeProfile, Kit, Placed } from '../src/geometry/contract';
-import { cavityCeiling, type OpeningFeature, type PocketFeature } from '../src/geometry/features';
+import { cavityCeiling, notchFloor, type OpeningFeature, type PocketFeature } from '../src/geometry/features';
 import { liveObjectCount, withScope } from '../src/geometry/kit';
 import { offsetPlaced, pointInPlaced, shapeCore } from '../src/geometry/shape2d';
 import { outerPlaced } from '../src/layout/resolve';
 import { LAYOUT_IDS, layoutConfig } from './helpers/configs';
 import { getKit, getWasm } from './helpers/manifold';
-import { column, intersectionVolume, plainFloorPoint, ringPrism, seatedBilresa, topOfIntersection } from './helpers/probes';
+import { column, filletTopAt, intersectionVolume, pocketProbePoints, ringPrism, seatedBilresa, topOfIntersection } from './helpers/probes';
 
 const STYLE_IDS = ['box', 'minimal'] as const;
 const CASES = LAYOUT_IDS.flatMap((id) => STYLE_IDS.map((s) => [id, s] as const));
@@ -47,6 +47,13 @@ function edgeExtent(e: EdgeProfile): number {
       return e.inset;
   }
 }
+
+/** Probe column size (see helpers/probes column). */
+const COLUMN = 0.3;
+/** Across-axis distance of the fillet-wall probe (outside the 34 mm bridge hole). */
+const FILLET_PROBE = 19;
+/** Overlap (mm³) of the STL's 52 mm strip rim with the default 51 mm strip's indent (see below). */
+const STRIP_RIM_OVERLAP = 10;
 
 /** Point inside the finger notch but outside the pocket outline (over the notch backing). */
 function notchOuterPoint(f: PocketFeature): [number, number] {
@@ -108,24 +115,32 @@ describe.each(CASES)('cover %s × %s', (layoutId, styleId) => {
     });
   });
 
-  it('pocket floors, strip indents and notch floors sit at the resolved heights', () => {
+  it('nested pocket: glue ledges, bridge hole, fillet wall and notch floor sit at the resolved heights', () => {
     const top = b.frame.frontZ + 5;
     for (const f of pockets(b)) {
       withScope(() => {
-        const [px, py] = plainFloorPoint(f);
-        const floor = b.manifold.intersect(column(kit, px, py, -1, top));
-        expect(Math.abs(floor.boundingBox().max[2] - f.floorZ), `${f.id} floor top`).toBeLessThanOrEqual(TOL);
-        expect(Math.abs(floor.boundingBox().min[2] - (f.floorZ - b.frame.floorT)), `${f.id} floor bottom`).toBeLessThanOrEqual(TOL);
-
-        const strip = topOfIntersection(b.manifold, column(kit, f.strip.x, f.strip.y, -1, top));
-        expect(Math.abs(strip - (f.floorZ - f.stripDepth)), `${f.id} strip`).toBeLessThanOrEqual(TOL);
+        const { ledge, hole, fillet } = pocketProbePoints(f, config.bilresa.strip.l);
+        for (const [x, y] of ledge) {
+          // the strip's end ledges: indent floor on top, the pocket floor's underside below
+          const col = b.manifold.intersect(column(kit, x, y, -1, top));
+          expect(Math.abs(col.boundingBox().max[2] - (f.floorZ - f.stripDepth)), `${f.id} ledge top`).toBeLessThanOrEqual(TOL);
+          expect(Math.abs(col.boundingBox().min[2] - (f.floorZ - b.frame.floorT)), `${f.id} ledge bottom`).toBeLessThanOrEqual(TOL);
+        }
+        // through the bridge hole at the pocket centre: nothing at all
+        expect(intersectionVolume(b.manifold, column(kit, hole[0], hole[1], -1, top)), `${f.id} hole`).toBeLessThan(1e-9);
+        // beside the hole, the wall follows the Bilresa's back fillet (+ clearance)
+        const wall = topOfIntersection(b.manifold, column(kit, fillet[0], fillet[1], -1, top));
+        const expected = filletTopAt(f, FILLET_PROBE + COLUMN / 2);
+        expect(expected).toBeGreaterThan(f.floorZ + 0.5);
+        expect(expected).toBeLessThan(f.floorZ + f.backFilletR);
+        expect(Math.abs(wall - expected), `${f.id} fillet wall`).toBeLessThanOrEqual(0.1);
 
         if (f.notch) {
           const [nx, ny] = notchOuterPoint(f);
           expect(pointInPlaced([nx, ny], f.placed)).toBe(false);
-          // outside the pocket outline but inside the notch: floor of the notch backing
+          // outside the pocket outline but inside the notch: floor of the notch backing, above the pocket floor
           const n = topOfIntersection(b.manifold, column(kit, nx, ny, -1, top));
-          expect(Math.abs(n - f.floorZ), `${f.id} notch floor`).toBeLessThanOrEqual(TOL);
+          expect(Math.abs(n - notchFloor(f)), `${f.id} notch floor`).toBeLessThanOrEqual(TOL);
         }
       });
     }
@@ -136,7 +151,7 @@ describe.each(CASES)('cover %s × %s', (layoutId, styleId) => {
     const z1 = b.frame.frontZ + 5;
     const clear = (p: Placed) => intersectionVolume(b.manifold, kit.prism(offsetPlaced(p, -0.2), z0, z1));
     for (const f of pockets(b)) {
-      expect(f.holes.length).toBeGreaterThan(0);
+      expect(f.holes).toHaveLength(1);
       for (const hole of f.holes) withScope(() => expect(clear(hole), `${f.id} hole`).toBeLessThan(1e-6));
     }
     const ctx = { frame: b.frame, params: b.params, kit };
@@ -165,15 +180,32 @@ describe.each(CASES)('cover %s × %s', (layoutId, styleId) => {
     });
   });
 
-  it('leaves room for the real Bilresa model in every pocket', () => {
+  it('leaves room for the real Bilresa model in every pocket (back on the floor, front out)', () => {
     for (const f of pockets(b)) {
       withScope(() => {
         const file = BILRESA_VARIANTS[f.variant].model.split('/').pop()!;
         const device = seatedBilresa(wasm, f, file);
         expect(device.status()).toBe('NoError');
-        // sanity: the device stands proud of the face by depth − pocket depth
-        expect(device.boundingBox().max[2]).toBeGreaterThan(b.frame.frontZ);
-        expect(intersectionVolume(b.manifold, device), `${f.id}`).toBeLessThan(1e-3);
+        // the front stands proud of the face by depth − pocket depth; the strip rim dips into its indent
+        const box = device.boundingBox();
+        expect(box.max[2]).toBeCloseTo(f.floorZ + BILRESA_VARIANTS[f.variant].depth, 4);
+        expect(box.max[2]).toBeGreaterThan(b.frame.frontZ);
+        expect(box.min[2]).toBeCloseTo(f.floorZ - BILRESA_VARIANTS[f.variant].stripRim, 4);
+        // the body (back flat and up) fits the nested pocket exactly
+        const big = { shape: { kind: 'roundedRect' as const, w: 500, h: 500, r: 0 }, x: 0, y: 0, rotDeg: 0 };
+        const body = device.intersect(kit.prism(big, f.floorZ + 1e-3, b.frame.frontZ + 30));
+        expect(intersectionVolume(b.manifold, body), `${f.id} body`).toBeLessThan(1e-3);
+        // The STL's strip rim is a 22 × 52 stadium (flat at its −y end); the default 51 mm strip's
+        // indent (51.4) is 0.3 mm shorter at each end, so the rim's tips overlap the glue ledges:
+        // a few mm³, only in the indent's height band and only beyond the bridge hole.
+        const overlap = b.manifold.intersect(device);
+        const v = overlap.isEmpty() ? 0 : overlap.volume();
+        expect(v, `${f.id} rim`).toBeLessThan(STRIP_RIM_OVERLAP);
+        if (v > 0) {
+          const ob = overlap.boundingBox();
+          expect(ob.min[2]).toBeGreaterThanOrEqual(f.floorZ - f.stripDepth - 1e-3);
+          expect(ob.max[2]).toBeLessThanOrEqual(f.floorZ + 1e-3);
+        }
       });
     }
   });

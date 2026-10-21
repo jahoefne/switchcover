@@ -23,7 +23,7 @@ function rectOutletShallow(): CoverConfig {
   c.grid = { cols: 1, rows: 2, pitchX: 60, pitchY: 60 };
   c.modules = [
     { col: 0, row: 0, role: 'outlet', rot: 0, dx: 5, dy: 0, opening: { shape: 'roundedRect', w: 40, h: 50, cornerR: 6 } },
-    { col: 0, row: 1, role: 'bilresa', rot: 180, dx: 0, dy: -3, bilresa: { variant: '2button', pocketDepth: 8, notch: false } },
+    { col: 0, row: 1, role: 'bilresa', rot: 180, dx: 0, dy: -3, bilresa: { variant: '2button', pocketDepth: 8.5, notch: false } },
   ];
   return c;
 }
@@ -89,7 +89,7 @@ export function randomConfig(seed: number): CoverConfig {
       if (role === 'bilresa') {
         m.bilresa = {
           variant: pick(['2button', 'wheel'] as const),
-          pocketDepth: pick([undefined, 7, 10]),
+          pocketDepth: pick([undefined, 9, 12]),
           notch: pick([undefined, false]),
         };
       }
@@ -101,8 +101,8 @@ export function randomConfig(seed: number): CoverConfig {
   c.cover.skirtT = pick([1.6, 2.4, 3]);
   c.cover.minWall = pick([1.2, 2, 3]);
   c.cover.margin = pick([0, 2, 4]);
-  c.bilresa.pocketDepth = pick([8, 9, 10]);
-  c.bilresa.notch.d = pick([12, 16, 20]);
+  c.bilresa.pocketDepth = pick([8.5, 10, 11]);
+  c.bilresa.notch.d = pick([10, 14, 18]);
   if (c.cover.style === 'minimal') c.cover.styleParams = { cornerR: pick([0, 4, 10]), chamfer: pick([0, 1, 2.5]) };
   return CoverConfigSchema.parse(c);
 }

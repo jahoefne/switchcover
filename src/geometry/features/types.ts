@@ -6,7 +6,8 @@
  * Features never apply booleans to the body themselves; buildCover / buildTestFit collect
  * the tools of every feature and apply them stage by stage (one union per stage).
  *
- *  - `add` tools are material that must exist INSIDE the body (pocket wells, notch backing).
+ *  - `add` tools are material that must exist INSIDE the body (pocket wells, strip-ledge slabs,
+ *    notch backings and their skirt bridges).
  *    buildCover carves them out of the cavity tool instead of adding them to the body, which
  *    is equivalent but can never protrude through a style's face or edge profile.
  *    buildTestFit unions them as the part's body.
@@ -33,6 +34,11 @@ export interface FeatureOptions {
   wall?: number;
   /** Top of wells (default: highest local face over the well + OVERSHOOT). */
   top?: number;
+  /**
+   * Bridge a finger-notch backing that ends less than minWall short of the skirt to the skirt
+   * (default true; the standalone test fit has no skirt and passes false).
+   */
+  skirtMerge?: boolean;
 }
 
 /** The uniform feature signature (features may ignore trailing arguments). */
