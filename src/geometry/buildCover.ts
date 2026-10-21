@@ -102,7 +102,7 @@ export function prepareCover(kit: Kit, config: CoverConfig, options: BuildOption
     clearance: config.cover.clearance,
   };
   const limits = style.limits(params, plate);
-  const resolved = resolveLayout(config, { limits });
+  const resolved = resolveLayout(config, { limits, allowsNotchInEdge: style.allowsNotchInEdge });
   const raw: CoverFrame = { ...resolved, warnings: [...styleWarnings, ...paramWarnings, ...resolved.warnings] };
   const frame = placeFeaturesOnFace(raw, style, { frame: raw, params, kit });
   return { style, params, frame, ctx: { frame, params, kit } };

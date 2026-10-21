@@ -125,8 +125,13 @@ export const facetedStyle: CoverStyle<typeof params> = {
   printOrientation: 'faceDown',
   printHint:
     'Print face down. Bevels of 45° and steeper print cleanly; shallower bevels overhang and need supports along the outer edge. Add supports inside the pockets (their floors bridge).',
+  // A finger notch may run across the groove and bite into the bevel's foot: the notch is a plain
+  // cylinder, so the bevel keeps its facets around it, and the Ø14 notch no longer grows
+  // plate-sized covers by 12 mm. Its chamfer rim fades out where the bevel drops below it.
+  allowsNotchInEdge: true,
   limits: (p) => ({
-    // Features stay clear of the bevel and the groove (constant, so toggling the groove keeps the size).
+    // Pockets and openings stay clear of the bevel and the groove (constant, so toggling the
+    // groove keeps the size); finger notches may enter the edge zone (allowsNotchInEdge).
     minFrame: p.bevelW + p.grooveW + 3,
     minFrontZ: p.bevelW * Math.tan(p.bevelAngleDeg * DEG) + MIN_SIDE,
     // Edges are mitred, not rounded.

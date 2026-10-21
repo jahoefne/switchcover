@@ -136,10 +136,14 @@ export const organicStyle: CoverStyle<typeof params> = {
   printOrientation: 'faceDown',
   printHint:
     'Flat face (dome 0): print face down; add supports inside the pockets (their floors bridge) and, if your slicer flags it, under the first millimetres of the edge fillet. With a dome the face is curved: switch the print orientation to face up and support the cavity ceiling instead.',
+  // A finger notch may reach into the fillet (a dimple in the pebble's rounded edge; with the
+  // default fillet its rim only touches the fillet's start) instead of growing the cover.
+  allowsNotchInEdge: true,
   limits: (p) => {
     const wants = wantsOf(p);
     return {
-      // Pockets/openings stay on the flat face, ≥ 1 mm inside the fillet.
+      // Pockets/openings stay on the flat face, ≥ 1 mm inside the fillet (finger notches may
+      // enter it: allowsNotchInEdge).
       minFrame: p.edgeR + 1,
       minFrontZ: p.edgeR + 2,
       // The fillet may not exceed the corner radius (the plateau keeps rounded corners).

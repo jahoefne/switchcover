@@ -29,7 +29,7 @@ export function deriveFrame(config: CoverConfig): Derived {
     clearance: config.cover.clearance,
   };
   const limits = style.limits(params, plate);
-  const resolved = resolveLayout(config, { limits });
+  const resolved = resolveLayout(config, { limits, allowsNotchInEdge: style.allowsNotchInEdge });
   return {
     style,
     params,

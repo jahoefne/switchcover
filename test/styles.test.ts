@@ -117,7 +117,7 @@ function setup(spec: Spec, presetId: string, variant: Params) {
   const style = styleOf(spec.id);
   const cfg = presetConfig(presetId);
   const params = style.params.parse(variant) as Params;
-  const frame = resolveLayout(cfg, { limits: style.limits(params, plateOf(cfg)) });
+  const frame = resolveLayout(cfg, { limits: style.limits(params, plateOf(cfg)), allowsNotchInEdge: style.allowsNotchInEdge });
   return { style, cfg, params, frame, ctx: { frame, params, kit } as StyleCtx<Params> };
 }
 
@@ -258,7 +258,7 @@ describe.each(SPECS.map((s) => [s.id, s] as const))('%s style', (id, spec) => {
       expect(lim.pocketEdgeAllowance).toBeCloseTo(edgeWidth(full.pocket), 9);
       expect(lim.cornerR).toBe(params.cornerR);
       expect(typeof lim.edgeInset).toBe('function');
-      const frame = resolveLayout(cfg, { limits: lim });
+      const frame = resolveLayout(cfg, { limits: lim, allowsNotchInEdge: style.allowsNotchInEdge });
       expect(frame.frontZ).toBeGreaterThanOrEqual(lim.minFrontZ - 1e-9);
       // the resolver's corner radius reaches the style's (body corners never cut the cavity)
       if (typeof params.cornerR === 'number') expect(frame.outer.cornerR).toBeGreaterThanOrEqual(params.cornerR - 1e-9);
@@ -338,8 +338,12 @@ describe.each(SPECS.map((s) => [s.id, s] as const))('%s style', (id, spec) => {
         const sb = dec.subtract.boundingBox();
         expect(sb.min[0]).toBeGreaterThan(cx - w / 2);
         expect(sb.max[0]).toBeLessThan(cx + w / 2);
-        expect(sb.min[2]).toBeGreaterThan(frame.frontZ - frame.skinT);
+        expect(sb.max[2]).toBeLessThanOrEqual(frame.frontZ + OVERSHOOT + 1e-6);
         expect(dec.subtract.intersect(body).volume()).toBeGreaterThan(0);
+        // a decoration cut (groove, notch breakout) never breaks into the hollow: it stays out of
+        // the body offset inward by the full walls
+        const hollowBody = spec.body(ctx, { side: frame.skirtT, top: frame.skinT });
+        expect(dec.subtract.intersect(hollowBody).volume()).toBeLessThan(1e-6);
       }
 
       // shell: body − stub cavity + fill keeps ≥ 0.9 × the nominal walls everywhere
@@ -464,7 +468,7 @@ describe('organic dome', () => {
         [9.5, 'fillet', 1.25], // 4.5 mm apart: 1.25 each, too narrow for a flare
       ] as const) {
         cfg.modules[2].dy = dy; // the bottom socket moves up towards the middle one
-        const frame = resolveLayout(cfg, { limits: lim });
+        const frame = resolveLayout(cfg, { limits: lim, allowsNotchInEdge: style.allowsNotchInEdge });
         expect(frame.warnings.map((w) => w.code)).toContain('edge-reduced');
         const ctx = { frame, params, kit } as StyleCtx<Params>;
         const [upper, lower] = frame.features.filter((f) => f.kind === 'opening').sort((a, b) => b.placed.y - a.placed.y);
@@ -578,7 +582,7 @@ describe('timing (largest preset)', () => {
         cfg.cover.style = spec.id;
         for (const variant of spec.variants) {
           const params = style.params.parse(variant) as Params;
-          const frame = resolveLayout(cfg, { limits: style.limits(params, plateOf(cfg)) });
+          const frame = resolveLayout(cfg, { limits: style.limits(params, plateOf(cfg)), allowsNotchInEdge: style.allowsNotchInEdge });
           const ctx = { frame, params, kit: qk };
           const t0 = performance.now();
           const body = style.outerBody(ctx);

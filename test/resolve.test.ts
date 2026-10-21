@@ -13,6 +13,7 @@ import {
 } from '../src/geometry/shape2d';
 import type { Shape2D, StyleLimits } from '../src/geometry/contract';
 import { WARNING_CODES, backingGap, moduleAnchor, outerPlaced, resolveLayout } from '../src/layout/resolve';
+import { getStyle } from '../src/styles';
 
 type Pocket = Extract<ResolvedFeature, { kind: 'pocket' }>;
 type Opening = Extract<ResolvedFeature, { kind: 'opening' }>;
@@ -366,6 +367,96 @@ describe('finger notch: inside the frame like other features, no growth for the 
     expect(g).toBeGreaterThan(0);
     expect(g).toBeLessThan(f.minWall);
     expect(f.outer.h).toBe(96.8); // plate-driven
+  });
+});
+
+describe('finger notch in the edge zone (CoverStyle.allowsNotchInEdge)', () => {
+  const plateOf = (c: CoverConfig): CoverFrame['plate'] => ({
+    w: c.plate.w,
+    h: c.plate.h,
+    protrusion: c.plate.depth,
+    cornerR: c.plate.cornerR,
+    clearance: c.cover.clearance,
+  });
+  const styled = (styleId: string, allowsNotchInEdge: boolean, presetId = 'ch-sd-1x1') => {
+    const style = getStyle(styleId)!;
+    const c = presetConfig(presetId);
+    const params = style.params.parse({}) as Record<string, unknown>;
+    return resolveLayout(c, { limits: style.limits(params, plateOf(c)), allowsNotchInEdge });
+  };
+
+  it('1×1 faceted: 96.8 × 108.6 with the notch off the bevel, the plate-driven 96.8 × 96.8 when the notch may enter it', () => {
+    // minFrame 11 (bevel 7 + groove 1 + 3) + chamfer 1: the notch end at 42.3 needs 54.3
+    expect(styled('faceted', false).outer).toMatchObject({ w: 96.8, h: 108.6 });
+    const f = styled('faceted', true);
+    expect(f.outer).toMatchObject({ w: 96.8, h: 96.8, autoW: 96.8, autoH: 96.8 });
+    expect(getStyle('faceted')!.allowsNotchInEdge).toBe(true);
+    // the notch keeps minWall + the rim chamfer inside the outline …
+    const [p] = pockets(f);
+    expect(containmentMargin(p.notch!, outerPlaced(f))).toBeCloseTo(48.4 - 42.3, 6);
+    expect(containmentMargin(p.notch!, outerPlaced(f))).toBeGreaterThanOrEqual(2 + 1);
+    // … and its backing reaches into the skirt's merge zone
+    const g = backingGap(f.outer, f.skirtT, offsetPlaced(p.notch!, f.minWall));
+    expect(g).toBeGreaterThan(0);
+    expect(g).toBeLessThan(f.minWall);
+  });
+
+  it('1×1 stepped: 96.8 × 99.8 with the notch on the top tier, 96.8 × 96.8 when it may enter the step', () => {
+    // minFrame 7 (step 5 + 2) + chamfer 0.6: the notch end at 42.3 needs 49.9
+    expect(styled('stepped', false).outer).toMatchObject({ w: 96.8, h: 99.8 });
+    expect(styled('stepped', true).outer).toMatchObject({ w: 96.8, h: 96.8 });
+    expect(getStyle('stepped')!.allowsNotchInEdge).toBe(true);
+  });
+
+  it('1×1 organic: the notch no longer adds 4.3 mm; the rounded corner still sets the width', () => {
+    expect(styled('organic', false).outer).toMatchObject({ w: 101.33, h: 105.6 });
+    expect(styled('organic', true).outer).toMatchObject({ w: 101.33, h: 101.33 });
+    expect(getStyle('organic')!.allowsNotchInEdge).toBe(true);
+  });
+
+  it('minimal and box keep notches off nothing (minFrame 0): the flag changes nothing', () => {
+    for (const id of ['minimal', 'box']) {
+      expect(getStyle(id)!.allowsNotchInEdge).toBeUndefined();
+      expect(styled(id, true).outer).toEqual(styled(id, false).outer);
+    }
+  });
+
+  it('only the notch rule changes: pockets and openings keep max(minWall + margin, minFrame) + allowance', () => {
+    for (const styleId of ['faceted', 'stepped', 'organic']) {
+      const c = presetConfig('ch-sd-1x1');
+      c.bilresa.notch.enabled = false;
+      const style = getStyle(styleId)!;
+      const params = style.params.parse({}) as Record<string, unknown>;
+      const limits = style.limits(params, plateOf(c));
+      expect(resolveLayout(c, { limits, allowsNotchInEdge: true }).outer).toEqual(resolveLayout(c, { limits }).outer);
+    }
+  });
+
+  it.each([
+    ['ch-sd-1x1', 'faceted'],
+    ['ch-sd-1x2v-switch-socket', 'faceted'],
+    ['ch-sd-2x2', 'faceted'],
+    ['ch-sd-1x1', 'stepped'],
+    ['ch-sd-1x2v-switch-socket', 'stepped'],
+    ['ch-sd-1x2v-two-switches', 'stepped'],
+    ['ch-sd-1x1', 'organic'],
+    ['ch-sd-3x1h-three-switches', 'organic'],
+    ['de-1x2v', 'organic'],
+  ])('%s %s: notch + minWall + allowance inside the outline, backing inside the cavity, manual = auto', (presetId, styleId) => {
+    const style = getStyle(styleId)!;
+    const c = presetConfig(presetId);
+    const params = style.params.parse({}) as Record<string, unknown>;
+    const limits = style.limits(params, plateOf(c));
+    const auto = resolveLayout(c, { limits, allowsNotchInEdge: true });
+    c.cover.size = { w: auto.outer.autoW, h: auto.outer.autoH };
+    const manual = resolveLayout(c, { limits, allowsNotchInEdge: true });
+    expect(manual.outer).toEqual(auto.outer);
+    const need = c.cover.minWall + (limits.pocketEdgeAllowance ?? limits.edgeAllowance ?? 0);
+    for (const p of pockets(auto)) {
+      expect(containmentMargin(p.notch!, outerPlaced(auto)), p.id).toBeGreaterThanOrEqual(need - 1e-6);
+      expect(containmentMargin(offsetPlaced(p.notch!, auto.minWall), outerPlaced(auto, auto.skirtT)), p.id).toBeGreaterThanOrEqual(-auto.minWall);
+    }
+    expect(auto.warnings.filter((w) => w.severity === 'error')).toEqual([]);
   });
 });
 

@@ -136,6 +136,12 @@ glue-on metal strip (≈ 22 × 51 mm, ≈ 1 mm proud once in place). All of it l
 - **Finger notch.** Ø 14 mm at the pocket's end farthest from the plate centre, cut from the
   face down to 2 mm above the floor so a fingertip reaches the Bilresa's rounded edge to lift
   it out. Its backing is merged into the skirt when it would end less than `minWall` short of it.
+  The organic, faceted and stepped styles let the notch reach into their edge zone (fillet,
+  bevel, tier step) rather than growing the cover for it: the faceted notch runs across the
+  shadow groove and bites into the bevel's foot, the stepped notch opens into the step (a slot
+  of its width where only a thin fin of the top tier would remain), the organic notch's rim
+  touches the start of the fillet. A 1×1 cover therefore keeps its plate-driven size with every
+  style.
 - **Ghost.** The viewer shows the STL without tilting it: moved to (pocket x, y,
   floorZ + 18.5) and turned with the pocket.
 
@@ -153,7 +159,10 @@ more than 51 mm, raise the strip length (the test-fit part shows it).
      numbers (sliders; `clampTo: 'maxEdgeR'` lowers the max to that limit) or
      `{ kind: 'boolean', label }` for checkboxes.
    - `limits(params, plate)`: what the resolver must leave room for —
-     `minFrame` (features ↔ outer edge), `minFrontZ`, `maxEdgeR` (UI clamp), and optionally
+     `minFrame` (pockets / openings ↔ outer edge; finger notches too unless the style sets
+     `allowsNotchInEdge: true`, then only `minWall` + the pocket edge allowance keeps a notch's
+     backing and rim inside the outline and the notch may cut into your edge treatment),
+     `minFrontZ`, `maxEdgeR` (UI clamp), and optionally
      `edgeAllowance` / `pocketEdgeAllowance` (how far your opening / pocket edges widen the
      cut at the face; features are spaced and framed so these fit at full size), `cornerR`
      (your outer corner radius; the frame grows just enough for the plate to fit the cavity's
