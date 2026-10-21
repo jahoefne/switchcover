@@ -39,12 +39,12 @@ const owner = new WeakMap<Handle, Set<Handle>>();
 const stack: Array<Set<Handle>> = [];
 
 export function isHandle(o: unknown): o is Handle {
-  return (
-    typeof o === 'object' &&
-    o !== null &&
-    typeof (o as Handle).delete === 'function' &&
-    typeof (o as Handle).isDeleted === 'function'
-  );
+  if (typeof o !== 'object' || o === null) return false;
+  try {
+    return typeof (o as Handle).delete === 'function' && typeof (o as Handle).isDeleted === 'function';
+  } catch {
+    return false; // exotic objects (e.g. proxies that throw on unknown properties)
+  }
 }
 
 function isDeleted(o: Handle): boolean {

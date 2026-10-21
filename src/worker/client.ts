@@ -56,6 +56,8 @@ export interface BuildOptions {
   kind?: BuildKind;
   /** Defaults to 'preview' for 'build' and 'export' for 'export' / 'testFit'. */
   quality?: Quality;
+  /** 'testFit' only: pocket id (ResolvedFeature.id) to print; default the first pocket. */
+  featureId?: string;
 }
 
 export class GeometryClient {
@@ -80,7 +82,9 @@ export class GeometryClient {
         reject(new CancelledError());
         return;
       }
-      const job: Job = { request: { id: this.nextId++, kind, config, quality }, resolve, reject };
+      const request: BuildRequest = { id: this.nextId++, kind, config, quality };
+      if (options.featureId !== undefined) request.featureId = options.featureId;
+      const job: Job = { request, resolve, reject };
       if (kind === 'build') {
         this.queuedPreview?.reject(new SupersededError());
         this.queuedPreview = job;

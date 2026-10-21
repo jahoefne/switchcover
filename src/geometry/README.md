@@ -25,9 +25,41 @@ X right, Y up the wall, Z out of the wall, origin = plate centre, cover in z ∈
   rounded rects. `kit.edgeTool` does both. Used for pocket rims and opening edges.
 - Every cutting tool overshoots the surfaces it cuts by 0.1 mm (`OVERSHOOT`).
 - Build in stages, never one giant subtract: `outerBody − cavity + additions − cuts`, with
-  one `Manifold.union(tools)` per stage and then one boolean.
+  one `Manifold.union(tools)` per stage and then one boolean (see "Features and stages").
 - Do **not** use `levelSet`, `minkowskiSum` on non-convex inputs, or `smoothOut`/`refine`
   after booleans (they bulge flat faces and change fit dimensions).
+
+## Features and stages
+
+`features/*` turn each `ResolvedFeature` into tools — `(kit, frame, f, style, ctx, opts?) =>
+FeatureParts`; they never touch the body themselves. `buildCover` (and `buildTestFit`, with
+the same functions) applies them:
+
+```
+body   = style.outerBody(ctx)
+shell  = body − (union(cavity) − union(adds))   ≡ (body − cavity) + adds, clipped to the body
+shell += style.decorate().add                    (if any)
+cover  = shell − union(cuts + style.decorate().subtract)
+```
+
+| feature | kind | z range |
+|---|---|---|
+| cavity | cut (own stage) | outer inset by skirtT, [−0.1, frontZ − skinT]; open to the wall |
+| pocketWell | add | pocket + minWall, [floorZ − floorT, face max + 0.1] |
+| pocketVoid | cut | pocket, [floorZ, face], rim = `style.pocketEdge` (default chamfer 0.6) |
+| stripIndent | cut | strip, [floorZ − stripDepth, floorZ + 0.1] |
+| accessHoles | cut | each hole, [min(floor underside, cavity ceiling) − 0.1, floorZ + 0.1] |
+| notch | add + cut | backing well (circle + minWall) like the pocket well; void [floorZ, face] with the pocket rim edge |
+| opening | cut | outlet: `style.openingEdge`, passthrough: chamfer 0.6; [cavity ceiling − 0.1, face] + plain through-prism |
+
+- Adds (wells) are carved out of the cavity instead of unioned onto the body, so they can
+  never poke through a style's face or edge profile, whatever their top.
+- Everything is placed relative to `style.surfaceZ` at the feature centre. `prepareCover`
+  lifts each pocket's `floorZ` by `surfaceZ(centre) − frontZ` (never lowers it); the
+  returned frame carries the lifted values, so the viewer's ghosts match the geometry.
+- Face cuts are upward-closed (`faceCut`): where a dome rises above an edge profile's top,
+  a chimney of the widened outline clears up to the highest face point. Otherwise two
+  profiles meeting under a higher face leave a bridge — an unintended through-hole.
 
 ## Resolution
 
@@ -51,13 +83,22 @@ X right, Y up the wall, Z out of the wall, origin = plate centre, cover in z ∈
 ## Validity after build
 
 `status() === 'NoError'`, `!isEmpty()`, `decompose().length === 1`,
-`genus() ===` number of through-holes.
+`genus() ===` number of through-holes (`expectedGenus(frame)`). Failures become
+severity-`'error'` warnings (`geometry-*`); the mesh is still returned.
+
+Counting through-holes: the open-bottom shell is a cup (genus 0). Pockets, strip indents
+and notches are blind (floor below, wells / backing around), so they add nothing. Every
+opening and every access hole that overlaps the cavity footprint joins the face side to the
+wall side and adds exactly one handle (two holes in one pocket = two). The check is skipped
+when the resolver reports `feature-overlap` (merged cuts merge holes; already reported).
 
 ## Worker
 
 - One build in flight; newer preview requests replace the queued one; cancel by
   terminate + respawn (`worker/client.ts`).
-- Downloads rebuild at export quality — never export the preview mesh.
+- Downloads rebuild at export quality — never export the preview mesh. `export` /
+  `testFit` responses carry the binary STL in `config.print.orientation` (`'style'` →
+  `style.printOrientation`).
 - Copy `getMesh()` buffers into fresh typed arrays and transfer them.
 
 ## WASM init
@@ -75,4 +116,6 @@ X right, Y up the wall, Z out of the wall, origin = plate centre, cover in z ∈
 80-byte header must not start with `solid`; little-endian; normals from winding.
 Face-down export = rotation 180° about Y, (x, y, z) → (−x, y, −z), then translate to
 min z = 0. Never mirror / negative scale (the slicer's top view then looks mirrored —
-that is correct).
+that is correct). `export/stl.ts`: `toBinaryStl(manifold | {positions, indices},
+{orientation})`, `stlTriangleCount`, `parseBinaryStl` (merges identical vertices, so a
+watertight STL goes straight back into `Manifold.ofMesh`), `resolvePrintOrientation`.

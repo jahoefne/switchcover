@@ -1,0 +1,229 @@
+/**
+ * Full-cover geometry probes: every layout (presets + extras) × {box, minimal}.
+ *
+ * Genus (= number of through-holes): the open-bottom shell is a cup (genus 0); pockets,
+ * strip indents and finger notches are blind; every opening and every access hole connects
+ * the face side with the wall side and adds exactly one handle. So for these layouts
+ * genus = #openings + Σ #access holes (see expectedGenus in src/geometry/buildCover.ts).
+ */
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { ManifoldToplevel } from 'manifold-3d';
+import { BILRESA_VARIANTS } from '../src/config/defaults';
+import { buildCover, type CoverBuild } from '../src/geometry/buildCover';
+import type { EdgeProfile, Kit, Placed } from '../src/geometry/contract';
+import { cavityCeiling, type OpeningFeature, type PocketFeature } from '../src/geometry/features';
+import { liveObjectCount, withScope } from '../src/geometry/kit';
+import { offsetPlaced, pointInPlaced, shapeCore } from '../src/geometry/shape2d';
+import { outerPlaced } from '../src/layout/resolve';
+import { LAYOUT_IDS, layoutConfig } from './helpers/configs';
+import { getKit, getWasm } from './helpers/manifold';
+import { column, intersectionVolume, plainFloorPoint, ringPrism, seatedBilresa, topOfIntersection } from './helpers/probes';
+
+const STYLE_IDS = ['box', 'minimal'] as const;
+const CASES = LAYOUT_IDS.flatMap((id) => STYLE_IDS.map((s) => [id, s] as const));
+const TOL = 0.05;
+
+let kit: Kit;
+let wasm: ManifoldToplevel;
+beforeAll(async () => {
+  wasm = await getWasm();
+  kit = await getKit('preview');
+});
+
+const pockets = (b: CoverBuild) => b.frame.features.filter((f): f is PocketFeature => f.kind === 'pocket');
+const openings = (b: CoverBuild) => b.frame.features.filter((f): f is OpeningFeature => f.kind === 'opening');
+
+/** How far an edge profile widens a cut at the face. */
+function edgeExtent(e: EdgeProfile): number {
+  switch (e.kind) {
+    case 'sharp':
+      return 0;
+    case 'chamfer':
+      return e.size;
+    case 'fillet':
+    case 'flare':
+      return e.r;
+    case 'step':
+      return e.inset;
+  }
+}
+
+/** Point inside the finger notch but outside the pocket outline (over the notch backing). */
+function notchOuterPoint(f: PocketFeature): [number, number] {
+  const n = f.notch!;
+  const r = shapeCore(n.shape).r;
+  const dx = n.x - f.placed.x;
+  const dy = n.y - f.placed.y;
+  const len = Math.hypot(dx, dy);
+  return [n.x + (dx / len) * (r - 2), n.y + (dy / len) * (r - 2)];
+}
+
+describe.each(CASES)('cover %s × %s', (layoutId, styleId) => {
+  let b: CoverBuild;
+  const config = layoutConfig(layoutId, styleId);
+
+  beforeAll(() => {
+    b = buildCover(kit, config);
+  });
+  afterAll(() => {
+    b.manifold.delete();
+  });
+
+  it('is one valid solid whose genus is the number of through-holes', () => {
+    const m = b.manifold;
+    expect(b.style.id).toBe(styleId);
+    expect(m.status()).toBe('NoError');
+    expect(m.isEmpty()).toBe(false);
+    withScope(() => expect(m.decompose().length).toBe(1));
+    const throughHoles = openings(b).length + pockets(b).reduce((n, f) => n + f.holes.length, 0);
+    expect(b.expectedGenus).toBe(throughHoles);
+    expect(m.genus()).toBe(throughHoles);
+    expect(b.warnings.filter((w) => w.severity === 'error')).toEqual([]);
+    expect(b.frame.warnings).toEqual(b.warnings);
+  });
+
+  it('fills the frame: bbox = outer × frontZ, base exactly at z = 0, volume in range', () => {
+    const { w, h, cx, cy } = b.frame.outer;
+    const box = b.manifold.boundingBox();
+    const min = [cx - w / 2, cy - h / 2, 0];
+    const max = [cx + w / 2, cy + h / 2, b.frame.frontZ];
+    for (let i = 0; i < 3; i++) {
+      expect(Math.abs(box.min[i] - min[i]), `min[${i}]`).toBeLessThanOrEqual(TOL);
+      expect(Math.abs(box.max[i] - max[i]), `max[${i}]`).toBeLessThanOrEqual(TOL);
+    }
+    expect(box.min[2]).toBe(0);
+    const v = b.manifold.volume();
+    expect(v).toBeGreaterThan(0);
+    expect(v).toBeLessThan(w * h * b.frame.frontZ);
+  });
+
+  it('touches the wall only with the skirt ring (slice at z = 0.01)', () => {
+    withScope(() => {
+      const slice = b.manifold.slice(0.01);
+      const body = b.style.outerBody({ frame: b.frame, params: b.params, kit }).slice(0.01);
+      const ring = body.area() - kit.cross(outerPlaced(b.frame, b.frame.skirtT)).area();
+      expect(ring).toBeGreaterThan(0);
+      expect(Math.abs(slice.area() - ring) / ring).toBeLessThan(0.01);
+      expect(slice.numContour()).toBe(2); // outer outline + cavity
+    });
+  });
+
+  it('pocket floors, strip indents and notch floors sit at the resolved heights', () => {
+    const top = b.frame.frontZ + 5;
+    for (const f of pockets(b)) {
+      withScope(() => {
+        const [px, py] = plainFloorPoint(f);
+        const floor = b.manifold.intersect(column(kit, px, py, -1, top));
+        expect(Math.abs(floor.boundingBox().max[2] - f.floorZ), `${f.id} floor top`).toBeLessThanOrEqual(TOL);
+        expect(Math.abs(floor.boundingBox().min[2] - (f.floorZ - b.frame.floorT)), `${f.id} floor bottom`).toBeLessThanOrEqual(TOL);
+
+        const strip = topOfIntersection(b.manifold, column(kit, f.strip.x, f.strip.y, -1, top));
+        expect(Math.abs(strip - (f.floorZ - f.stripDepth)), `${f.id} strip`).toBeLessThanOrEqual(TOL);
+
+        if (f.notch) {
+          const [nx, ny] = notchOuterPoint(f);
+          expect(pointInPlaced([nx, ny], f.placed)).toBe(false);
+          // outside the pocket outline but inside the notch: floor of the notch backing
+          const n = topOfIntersection(b.manifold, column(kit, nx, ny, -1, top));
+          expect(Math.abs(n - f.floorZ), `${f.id} notch floor`).toBeLessThanOrEqual(TOL);
+        }
+      });
+    }
+  });
+
+  it('access holes and openings are clear; outlets have material around them', () => {
+    const z0 = -1;
+    const z1 = b.frame.frontZ + 5;
+    const clear = (p: Placed) => intersectionVolume(b.manifold, kit.prism(offsetPlaced(p, -0.2), z0, z1));
+    for (const f of pockets(b)) {
+      expect(f.holes.length).toBeGreaterThan(0);
+      for (const hole of f.holes) withScope(() => expect(clear(hole), `${f.id} hole`).toBeLessThan(1e-6));
+    }
+    const ctx = { frame: b.frame, params: b.params, kit };
+    for (const f of openings(b)) {
+      withScope(() => {
+        expect(clear(f.placed), `${f.id} opening`).toBeLessThan(1e-6);
+        const e = f.role === 'outlet' ? edgeExtent(b.style.openingEdge(ctx, f)) : 0.6;
+        const ceil = cavityCeiling(b.frame);
+        const ring = ringPrism(kit, f.placed, e + 0.2, e + 0.8, ceil + 0.01, b.frame.frontZ - 0.01);
+        const filled = intersectionVolume(b.manifold, ring) / ring.volume();
+        expect(filled, `${f.id} rim`).toBeGreaterThan(0.85);
+      });
+    }
+  });
+
+  it('keeps clear of the plate box (+ clearance, + rocker gap)', () => {
+    const { plate } = b.frame;
+    const c = plate.clearance;
+    withScope(() => {
+      const box = kit.prism(
+        { shape: { kind: 'roundedRect', w: plate.w + 2 * c - 0.02, h: plate.h + 2 * c - 0.02, r: plate.cornerR + c - 0.01 }, x: 0, y: 0, rotDeg: 0 },
+        0,
+        plate.protrusion + config.cover.rockerGap - 0.01,
+      );
+      expect(intersectionVolume(b.manifold, box)).toBeLessThan(1e-6);
+    });
+  });
+
+  it('leaves room for the real Bilresa model in every pocket', () => {
+    for (const f of pockets(b)) {
+      withScope(() => {
+        const file = BILRESA_VARIANTS[f.variant].model.split('/').pop()!;
+        const device = seatedBilresa(wasm, f, file);
+        expect(device.status()).toBe('NoError');
+        // sanity: the device stands proud of the face by depth − pocket depth
+        expect(device.boundingBox().max[2]).toBeGreaterThan(b.frame.frontZ);
+        expect(intersectionVolume(b.manifold, device), `${f.id}`).toBeLessThan(1e-3);
+      });
+    }
+  });
+});
+
+describe('export quality', () => {
+  let exportKit: Kit;
+  beforeAll(async () => {
+    exportKit = await getKit('export');
+  });
+
+  it.each(CASES)('%s × %s is valid with the same topology', (layoutId, styleId) => {
+    withScope(() => {
+      const b = buildCover(exportKit, layoutConfig(layoutId, styleId));
+      expect(b.manifold.status()).toBe('NoError');
+      expect(b.manifold.decompose().length).toBe(1);
+      expect(b.manifold.genus()).toBe(b.expectedGenus);
+      expect(b.warnings.filter((w) => w.severity === 'error')).toEqual([]);
+    });
+  });
+});
+
+describe('buildCover memory and speed', () => {
+  it('leaves zero live WASM objects after 50 builds', () => {
+    const before = liveObjectCount();
+    for (let i = 0; i < 50; i++) {
+      const id = LAYOUT_IDS[i % LAYOUT_IDS.length];
+      withScope(() => {
+        buildCover(kit, layoutConfig(id, STYLE_IDS[i % 2]));
+        return null;
+      });
+    }
+    expect(liveObjectCount()).toBe(before);
+  });
+
+  it('stays within the preview / export time budget (soft, logged)', async () => {
+    const exportKit = await getKit('export');
+    const time = (k: Kit, id: string) =>
+      withScope(() => {
+        const t0 = performance.now();
+        const { manifold } = buildCover(k, layoutConfig(id, 'minimal'));
+        return { ms: performance.now() - t0, tris: manifold.numTri() };
+      });
+    for (const id of ['ch-sd-3x1h-three-switches', 'ch-sd-2x2']) {
+      time(kit, id); // warm up
+      const preview = time(kit, id);
+      const exp = time(exportKit, id);
+      console.info(`[budget] ${id}: preview ${preview.ms.toFixed(0)} ms / ${preview.tris} tris, export ${exp.ms.toFixed(0)} ms / ${exp.tris} tris`);
+      if (preview.ms > 1500) console.warn(`[budget] preview build of ${id} took ${preview.ms.toFixed(0)} ms (> 1500 ms)`);
+      expect(exp.tris).toBeLessThan(40_000);
+    }
+  });
+});
