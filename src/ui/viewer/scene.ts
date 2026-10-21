@@ -9,10 +9,12 @@
  *  - plate: translucent rounded box frame.plate.w × h × protrusion standing on the wall at
  *    the origin; its edges are drawn x-ray style (no depth test) so they show through the
  *    cover, its faces only where nothing is in front (openings, wireframe mode).
- *  - Bilresa: the reference STLs (BASE_URL + variant.model, flat back at z = 0, body towards
- *    −z) rotated 180° about Y (back faces −z, body towards +z — a rotation, never a mirror),
- *    moved to (pocket.x, pocket.y, pocket.floorZ) and rotated by pocket.rotDeg about Z
- *    around the pocket centre.
+ *  - Bilresa: the reference STLs (BASE_URL + variant.model). Their flat z = 0 face is the
+ *    FRONT (buttons) and the rounded body runs towards −z to the back flat at −depth, which is
+ *    already the mounting orientation, so the STL is NOT rotated about X/Y: it is moved to
+ *    (pocket.x, pocket.y, floorZ + depth) — back flat on the pocket floor, front facing out —
+ *    and rotated by pocket.rotDeg about Z around the pocket centre (bilresaGhostPlacement,
+ *    shared with the geometry tests).
  */
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -20,6 +22,7 @@ import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BILRESA_VARIANTS } from '../../config/defaults';
 import type { BilresaVariant, CoverFrame } from '../../geometry/contract';
+import { bilresaGhostPlacement } from './ghost';
 
 export interface ViewerMesh {
   positions: Float32Array;
@@ -307,14 +310,14 @@ export class CoverScene {
     for (const f of frame.features) {
       if (f.kind !== 'pocket') continue;
       const holder = new THREE.Group();
-      holder.position.set(f.placed.x, f.placed.y, f.floorZ);
-      holder.rotation.z = THREE.MathUtils.degToRad(f.placed.rotDeg);
+      const g = bilresaGhostPlacement(f);
+      holder.position.set(...g.position);
+      holder.rotation.z = THREE.MathUtils.degToRad(g.rotZDeg);
       this.bilresaGroup.add(holder);
       this.loadVariant(f.variant).then(
         (geo) => {
           if (this.disposed || gen !== this.ghostGeneration) return;
-          const mesh = new THREE.Mesh(geo, this.bilresaMaterial);
-          mesh.rotation.y = Math.PI; // (x, y, z) → (−x, y, −z): body now extends towards +z
+          const mesh = new THREE.Mesh(geo, this.bilresaMaterial); // as modelled: front at +z, back towards the wall
           mesh.renderOrder = 5;
           holder.add(mesh);
           this.requestRender();
