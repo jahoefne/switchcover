@@ -12,6 +12,10 @@
  *  - bilresa.access is { w } (the hole length follows the strip),
  *  - pocketDepth (global and per module) ≥ MIN_POCKET_DEPTH (the nested pocket follows the
  *    Bilresa's 8 mm back fillet).
+ *
+ * Additive within v2 (no version bump; every older v2 link still parses):
+ *  - grid.offsetX / grid.offsetY (mm, default 0): shift every module anchor, for plates whose
+ *    devices do not sit on a grid centred on the plate (e.g. the Swiss switch + socket combo).
  */
 import { z } from 'zod';
 import {
@@ -79,6 +83,12 @@ export const GridSchema = z.object({
   rows: z.number().int().min(1).max(10),
   pitchX: mm(10, 200),
   pitchY: mm(10, 200),
+  /**
+   * Shift of the whole module grid from the plate centre (mm, +Y is up). Optional with default 0,
+   * so links written before it existed parse unchanged.
+   */
+  offsetX: mm(-200, 200).default(0),
+  offsetY: mm(-200, 200).default(0),
 });
 
 export const CoverSettingsSchema = z.object({
@@ -167,7 +177,7 @@ export const DEFAULT_CONFIG: CoverConfig = deepFreeze(CoverConfigSchema.parse({
     depth: CH_STANDARDDUE.depth,
     cornerR: CH_STANDARDDUE.cornerR,
   },
-  grid: { cols: 1, rows: 1, pitchX: CH_STANDARDDUE.pitch, pitchY: CH_STANDARDDUE.pitch },
+  grid: { cols: 1, rows: 1, pitchX: CH_STANDARDDUE.pitch, pitchY: CH_STANDARDDUE.pitch, offsetX: 0, offsetY: 0 },
   modules: [{ col: 0, row: 0, role: 'bilresa', rot: 0, dx: 0, dy: 0, bilresa: { variant: '2button' } }],
   cover: DEFAULT_COVER,
   bilresa: DEFAULT_BILRESA,

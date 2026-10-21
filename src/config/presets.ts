@@ -17,6 +17,7 @@ import {
   cloneConfig,
   deepFreeze,
   type CoverConfig,
+  type GridSettings,
   type ModuleConfig,
   type Rotation,
 } from './schema';
@@ -30,13 +31,21 @@ export interface Preset {
 }
 
 type ModuleSpec =
-  | { role: 'bilresa'; rot?: Rotation }
+  | { role: 'bilresa'; rot?: Rotation; dy?: number }
   | { role: 'outlet' }
   | { role: 'blank' }
   | { role: 'passthrough' };
 
+/** Plate / grid overrides for plates whose devices do not sit on the system's module grid. */
+interface LayoutOptions {
+  /** Plate size in modules of the system (default: the grid's cols × rows). */
+  plateModules?: { cols: number; rows: number };
+  /** Grid pitch and offset (default: the system pitch, no offset). */
+  grid?: Partial<Pick<GridSettings, 'pitchX' | 'pitchY' | 'offsetX' | 'offsetY'>>;
+}
+
 /** Build a full config for a plate system with `cells[row][col]` module specs. */
-function makeConfig(id: string, system: PlateSystem, cells: ModuleSpec[][]): CoverConfig {
+function makeConfig(id: string, system: PlateSystem, cells: ModuleSpec[][], opts: LayoutOptions = {}): CoverConfig {
   const rows = cells.length;
   const cols = cells[0].length;
   const modules: ModuleConfig[] = [];
@@ -46,6 +55,7 @@ function makeConfig(id: string, system: PlateSystem, cells: ModuleSpec[][]): Cov
       const m: ModuleConfig = { col, row, role: spec.role, rot: 0, dx: 0, dy: 0 };
       if (spec.role === 'bilresa') {
         m.rot = spec.rot ?? 0;
+        m.dy = spec.dy ?? 0;
         m.bilresa = { variant: '2button' };
       } else if (spec.role === 'outlet') {
         m.opening = { ...system.outlet };
@@ -53,16 +63,17 @@ function makeConfig(id: string, system: PlateSystem, cells: ModuleSpec[][]): Cov
       modules.push(m);
     });
   });
+  const span = opts.plateModules ?? { cols, rows };
   return CoverConfigSchema.parse({
     v: CONFIG_VERSION,
     plate: {
       preset: id,
-      w: plateSpan(system, cols),
-      h: plateSpan(system, rows),
+      w: plateSpan(system, span.cols),
+      h: plateSpan(system, span.rows),
       depth: system.depth,
       cornerR: system.cornerR,
     },
-    grid: { cols, rows, pitchX: system.pitch, pitchY: system.pitch },
+    grid: { cols, rows, pitchX: system.pitch, pitchY: system.pitch, offsetX: 0, offsetY: 0, ...opts.grid },
     modules,
     cover: DEFAULT_COVER,
     bilresa: DEFAULT_BILRESA,
@@ -80,8 +91,9 @@ function preset(
   description: string,
   system: PlateSystem,
   cells: ModuleSpec[][],
+  opts?: LayoutOptions,
 ): Preset {
-  return { id, label, description, system: system.id, config: makeConfig(id, system, cells) };
+  return { id, label, description, system: system.id, config: makeConfig(id, system, cells, opts) };
 }
 
 function customPreset(): Preset {

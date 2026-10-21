@@ -3,6 +3,10 @@
  * tiny preset schematics and for the clickable module grid.
  *
  * World → SVG: (x, y) → (x, −y); a world CCW rotation θ is `rotate(−θ)` in SVG.
+ *
+ * Both views draw the cover outline (which may be off the plate centre: frame.outer.cx/cy), the
+ * plate at the origin, the module grid at its anchors (shifted by grid.offsetX/Y) and the
+ * features with their rotation; the view box is the union of the three outlines.
  */
 import type { KeyboardEvent } from 'react';
 import type { CoverConfig } from '../../config/schema';
@@ -43,14 +47,31 @@ interface LayoutSvgProps {
   title?: string;
 }
 
+/** World-space box of the cover outline, the plate and the module grid (what the view must show). */
+export function layoutBounds(config: CoverConfig, frame: CoverFrame): { minX: number; maxX: number; minY: number; maxY: number } {
+  const { grid, plate } = config;
+  const { outer } = frame;
+  const gx = grid.offsetX ?? 0;
+  const gy = grid.offsetY ?? 0;
+  const boxes = [
+    [outer.cx - outer.w / 2, outer.cx + outer.w / 2, outer.cy - outer.h / 2, outer.cy + outer.h / 2],
+    [-plate.w / 2, plate.w / 2, -plate.h / 2, plate.h / 2],
+    [gx - (grid.cols * grid.pitchX) / 2, gx + (grid.cols * grid.pitchX) / 2, gy - (grid.rows * grid.pitchY) / 2, gy + (grid.rows * grid.pitchY) / 2],
+  ];
+  return {
+    minX: Math.min(...boxes.map((b) => b[0])),
+    maxX: Math.max(...boxes.map((b) => b[1])),
+    minY: Math.min(...boxes.map((b) => b[2])),
+    maxY: Math.max(...boxes.map((b) => b[3])),
+  };
+}
+
 export function LayoutSvg({ config, frame, interactive = false, selected, onSelect, className, title }: LayoutSvgProps) {
   const { grid, plate } = config;
-  const gridW = grid.cols * grid.pitchX;
-  const gridH = grid.rows * grid.pitchY;
-  const halfW = Math.max(frame.outer.w, plate.w, gridW) / 2;
-  const halfH = Math.max(frame.outer.h, plate.h, gridH) / 2;
+  const b = layoutBounds(config, frame);
   const pad = interactive ? 4 : 2;
-  const viewBox = `${-halfW - pad} ${-halfH - pad} ${2 * (halfW + pad)} ${2 * (halfH + pad)}`;
+  // SVG y = −world y: the top of the view is the highest world y.
+  const viewBox = `${b.minX - pad} ${-b.maxY - pad} ${b.maxX - b.minX + 2 * pad} ${b.maxY - b.minY + 2 * pad}`;
   const moduleAt = (col: number, row: number) => config.modules.find((m) => m.col === col && m.row === row);
 
   const cells: Cell[] = [];
@@ -71,16 +92,14 @@ export function LayoutSvg({ config, frame, interactive = false, selected, onSele
       aria-label={title}
       preserveAspectRatio="xMidYMid meet"
     >
-      {interactive && (
-        <rect
-          className="cover-outline"
-          x={frame.outer.cx - frame.outer.w / 2}
-          y={-frame.outer.cy - frame.outer.h / 2}
-          width={frame.outer.w}
-          height={frame.outer.h}
-          rx={Math.min(frame.outer.cornerR, frame.outer.w / 2, frame.outer.h / 2)}
-        />
-      )}
+      <rect
+        className="cover-outline"
+        x={frame.outer.cx - frame.outer.w / 2}
+        y={-frame.outer.cy - frame.outer.h / 2}
+        width={frame.outer.w}
+        height={frame.outer.h}
+        rx={Math.min(frame.outer.cornerR, frame.outer.w / 2, frame.outer.h / 2)}
+      />
       <rect
         className="plate"
         x={-plate.w / 2}
@@ -89,6 +108,23 @@ export function LayoutSvg({ config, frame, interactive = false, selected, onSele
         height={plate.h}
         rx={Math.min(plate.cornerR, plate.w / 2, plate.h / 2)}
       />
+      {!interactive && (
+        <g className="grid-cells" pointerEvents="none">
+          {cells.map((cell) => {
+            const [ax, ay] = moduleAnchor(grid, cell.col, cell.row);
+            return (
+              <rect
+                key={`${cell.col}-${cell.row}`}
+                x={ax - grid.pitchX / 2 + 1}
+                y={-ay - grid.pitchY / 2 + 1}
+                width={Math.max(0, grid.pitchX - 2)}
+                height={Math.max(0, grid.pitchY - 2)}
+                rx={3}
+              />
+            );
+          })}
+        </g>
+      )}
       {interactive &&
         cells.map((cell) => {
           const [ax, ay] = moduleAnchor(grid, cell.col, cell.row);

@@ -216,6 +216,19 @@ textarea {
   font-size: 0.92em;
 }
 
+.advanced-disclosure {
+  margin: 6px 0 0;
+}
+.advanced-disclosure > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.9em;
+  padding: 3px 0;
+}
+.advanced-disclosure[open] > summary {
+  margin-bottom: 2px;
+}
+
 /* ---------- fields ---------- */
 .field {
   display: grid;
@@ -451,6 +464,13 @@ select {
   stroke: var(--faint);
   stroke-width: 1;
   stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+}
+.layout-svg .grid-cells rect {
+  fill: none;
+  stroke: rgba(154, 161, 173, 0.35);
+  stroke-width: 0.8;
+  stroke-dasharray: 2 2;
   vector-effect: non-scaling-stroke;
 }
 .layout-svg .f-pocket {

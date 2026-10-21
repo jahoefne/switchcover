@@ -133,6 +133,21 @@ describe('App', () => {
     });
   });
 
+  it('edits the grid offset under the advanced disclosure; the module grid follows it', async () => {
+    renderApp();
+    const plate = within(document.getElementById('plate')!);
+    const modules = within(document.getElementById('modules')!);
+    const cell = () => screen.getByRole('button', { name: /Column 1, row 1/ }).querySelector('rect')!;
+    expect(Number(cell().getAttribute('y'))).toBeCloseTo(-30 + 1, 9);
+    fireEvent.change(plate.getByLabelText('Grid offset Y'), { target: { value: '3.5' } });
+    await waitFor(() => expect(decodeHash(window.location.hash).config.grid.offsetY).toBe(3.5));
+    // the module editor shows the same value, the cell (and its pocket) moved up (SVG y is −world y)
+    expect((modules.getByLabelText('Grid offset Y') as HTMLInputElement).value).toBe('3.5');
+    expect(Number(cell().getAttribute('y'))).toBeCloseTo(-3.5 - 30 + 1, 9);
+    fireEvent.change(modules.getByLabelText('Grid offset X'), { target: { value: '-2' } });
+    await waitFor(() => expect(decodeHash(window.location.hash).config.grid).toMatchObject({ offsetX: -2, offsetY: 3.5 }));
+  });
+
   it("shows the style's resolved print orientation and follows the organic dome slider", () => {
     const cfg = presetConfig('ch-sd-1x1');
     cfg.cover.style = 'organic';

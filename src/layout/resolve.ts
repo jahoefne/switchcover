@@ -7,7 +7,8 @@
  *
  * Steps:
  *  1. Height chain: stripDepth, floorT clamp, frontZ.
- *  2. Module anchors (row 0 on top) and feature centres (anchor + dx/dy).
+ *  2. Module anchors (row 0 on top, grid shifted by grid.offsetX/Y) and feature centres
+ *     (anchor + dx/dy).
  *  3. Automatic spreading of pockets that are closer than minWall + the two features' edge
  *     allowances (StyleLimits.edgeAllowance / pocketEdgeAllowance) to a neighbour along a grid
  *     axis. Pocket↔pocket conflicts move both symmetrically; pocket↔opening conflicts move only
@@ -106,9 +107,19 @@ export const DEFAULT_LIMITS: StyleLimits = { minFrame: 0, minFrontZ: 0, maxEdgeR
 const EPS = 1e-6;
 const fmt = (n: number) => (Math.round(n * 100) / 100).toString();
 
-/** Module (col, row) anchor: row 0 is the TOP row; Y is up. */
-export function moduleAnchor(grid: GridSettings, col: number, row: number): Vec2 {
-  return [(col - (grid.cols - 1) / 2) * grid.pitchX, ((grid.rows - 1) / 2 - row) * grid.pitchY];
+/** The grid fields moduleAnchor needs (the offsets default to 0, as in the schema). */
+export type AnchorGrid = Pick<GridSettings, 'cols' | 'rows' | 'pitchX' | 'pitchY'> & Partial<Pick<GridSettings, 'offsetX' | 'offsetY'>>;
+
+/**
+ * Module (col, row) anchor: row 0 is the TOP row; Y is up. The grid is centred on the plate
+ * centre, shifted by (offsetX, offsetY):
+ *   x = (col − (cols − 1)/2) · pitchX + offsetX,   y = ((rows − 1)/2 − row) · pitchY + offsetY.
+ */
+export function moduleAnchor(grid: AnchorGrid, col: number, row: number): Vec2 {
+  return [
+    (col - (grid.cols - 1) / 2) * grid.pitchX + (grid.offsetX ?? 0),
+    ((grid.rows - 1) / 2 - row) * grid.pitchY + (grid.offsetY ?? 0),
+  ];
 }
 
 export function featureId(col: number, row: number): string {

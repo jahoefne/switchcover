@@ -28,6 +28,8 @@ function perturb(base: CoverConfig, rand: () => number): CoverConfig {
   c.plate.cornerR = between(0, 10);
   c.grid.pitchX = between(40, 90);
   c.grid.pitchY = between(40, 90);
+  c.grid.offsetX = rand() < 0.5 ? 0 : between(-20, 20);
+  c.grid.offsetY = rand() < 0.5 ? 0 : between(-20, 20);
   c.cover.skinT = between(1, 5);
   c.cover.skirtT = between(1, 5);
   c.cover.margin = between(0, 10);
@@ -51,6 +53,12 @@ function perturb(base: CoverConfig, rand: () => number): CoverConfig {
   });
   return CoverConfigSchema.parse(c);
 }
+
+/**
+ * A fixture's decoded config as it parses today: links written before grid.offsetX / offsetY
+ * existed get both offsets as 0 (zod default), everything else is unchanged.
+ */
+const withGridOffsets = <T extends { grid: object }>(c: T) => ({ ...c, grid: { ...c.grid, offsetX: 0, offsetY: 0 } });
 
 describe('urlCodec', () => {
   it.each(listPresets().map((p) => [p.id, p.config] as const))('round-trips preset %s', (_id, config) => {
@@ -120,7 +128,7 @@ describe('urlCodec', () => {
 
     const a = decodeHash(V1_HASH_FIXTURES['ch-sd-1x2v-switch-socket']);
     expect(a.warnings).toEqual([]);
-    expect(a.config).toEqual(V1_SWITCH_SOCKET_MIGRATED);
+    expect(a.config).toEqual(withGridOffsets(V1_SWITCH_SOCKET_MIGRATED));
     // the layout part must still match today's preset
     const preset = getPreset('ch-sd-1x2v-switch-socket')!.config;
     expect({ plate: a.config.plate, grid: a.config.grid, modules: a.config.modules }).toEqual({
@@ -140,7 +148,27 @@ describe('urlCodec', () => {
   it('committed v2 fixtures decode to the expected presets', () => {
     const a = decodeHash(V2_HASH_FIXTURES['ch-sd-1x2v-switch-socket']);
     expect(a.warnings).toEqual([]);
-    expect(a.config).toEqual(V2_SWITCH_SOCKET_EXPECTED);
+    expect(a.config).toEqual(withGridOffsets(V2_SWITCH_SOCKET_EXPECTED));
     expect(a.config).toEqual(getPreset('ch-sd-1x2v-switch-socket')!.config);
+  });
+
+  it('links without grid offsets (every link before they existed) parse with offset 0, no warnings', () => {
+    const payload = JSON.parse(LZString.decompressFromEncodedURIComponent(V2_HASH_FIXTURES['ch-sd-1x2v-switch-socket'].slice(4))!);
+    expect(payload.grid).toEqual({ cols: 1, rows: 2, pitchX: 60, pitchY: 60 }); // the fixture predates the offsets
+    const { config, warnings } = decodeHash(V2_HASH_FIXTURES['ch-sd-1x2v-switch-socket']);
+    expect(warnings).toEqual([]);
+    expect(config.grid).toEqual({ cols: 1, rows: 2, pitchX: 60, pitchY: 60, offsetX: 0, offsetY: 0 });
+    // the schema alone fills them in too (zod default), so hand-built configs need not carry them
+    const bare = { ...payload, grid: { cols: 1, rows: 2, pitchX: 60, pitchY: 60 } };
+    expect(CoverConfigSchema.parse(bare).grid).toMatchObject({ offsetX: 0, offsetY: 0 });
+  });
+
+  it('round-trips grid offsets', () => {
+    const c = presetConfig('ch-sd-1x2v-switch-socket');
+    c.grid.offsetX = -4.25;
+    c.grid.offsetY = 3.5;
+    const back = decodeHash(encodeHash(c));
+    expect(back.warnings).toEqual([]);
+    expect(back.config.grid).toEqual({ ...c.grid });
   });
 });

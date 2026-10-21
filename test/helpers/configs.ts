@@ -9,7 +9,7 @@ import { CoverConfigSchema, type CoverConfig, type ModuleConfig, type OpeningSpe
 function passthroughWheel(): CoverConfig {
   const c = presetConfig('custom');
   c.plate = { ...c.plate, preset: 'custom', w: 150, h: 90 };
-  c.grid = { cols: 2, rows: 1, pitchX: 60, pitchY: 60 };
+  c.grid = { ...c.grid, cols: 2, rows: 1, pitchX: 60, pitchY: 60 };
   c.modules = [
     { col: 0, row: 0, role: 'bilresa', rot: 90, dx: 0, dy: 0, bilresa: { variant: 'wheel' } },
     { col: 1, row: 0, role: 'passthrough', rot: 0, dx: 0, dy: 0 },
@@ -20,7 +20,7 @@ function passthroughWheel(): CoverConfig {
 function rectOutletShallow(): CoverConfig {
   const c = presetConfig('custom');
   c.plate = { ...c.plate, preset: 'custom', w: 90, h: 150 };
-  c.grid = { cols: 1, rows: 2, pitchX: 60, pitchY: 60 };
+  c.grid = { ...c.grid, cols: 1, rows: 2, pitchX: 60, pitchY: 60 };
   c.modules = [
     { col: 0, row: 0, role: 'outlet', rot: 0, dx: 5, dy: 0, opening: { shape: 'roundedRect', w: 40, h: 50, cornerR: 6 } },
     { col: 0, row: 1, role: 'bilresa', rot: 180, dx: 0, dy: -3, bilresa: { variant: '2button', pocketDepth: 8.5, notch: false } },
@@ -72,7 +72,7 @@ export function randomConfig(seed: number): CoverConfig {
   const c = layoutConfig('ch-sd-1x1', pick(['box', 'minimal']));
   const cols = pick([1, 1, 2, 3]);
   const rows = pick([1, 2, 2, 3]);
-  c.grid = { cols, rows, pitchX: 60, pitchY: 60 };
+  c.grid = { ...c.grid, cols, rows, pitchX: 60, pitchY: 60 };
   c.plate = { ...c.plate, w: 90 + 60 * (cols - 1), h: 90 + 60 * (rows - 1) };
   c.modules = [];
   for (let row = 0; row < rows; row++) {

@@ -34,7 +34,7 @@ const bilresa = (col: number, row: number, extra: Partial<ModuleConfig> = {}): M
 
 function withGrid(cols: number, rows: number, modules: ModuleConfig[]): CoverConfig {
   const c = presetConfig('custom');
-  c.grid = { cols, rows, pitchX: 60, pitchY: 60 };
+  c.grid = { ...c.grid, cols, rows, pitchX: 60, pitchY: 60 };
   c.plate.w = 90 + 60 * (cols - 1);
   c.plate.h = 90 + 60 * (rows - 1);
   c.modules = modules;
@@ -61,6 +61,25 @@ describe('anchors', () => {
       [0, 0],
       [0, -60],
     ]);
+  });
+
+  it('grid offsets shift every anchor (and the features on them)', () => {
+    const g = { ...grid(1, 2), pitchY: 31, offsetX: 0, offsetY: 3.5 };
+    expect(moduleAnchor(g, 0, 0)).toEqual([0, 19]);
+    expect(moduleAnchor(g, 0, 1)).toEqual([0, -12]);
+    expect(moduleAnchor({ ...grid(2, 1), offsetX: -5, offsetY: 2 }, 1, 0)).toEqual([25, 2]);
+    // omitted offsets are 0 (as in the schema)
+    expect(moduleAnchor(grid(2, 1), 1, 0)).toEqual(moduleAnchor({ ...grid(2, 1), offsetX: 0, offsetY: 0 }, 1, 0));
+    const c = withGrid(2, 1, [bilresa(0, 0), bilresa(1, 0, { dx: 2, dy: -3 })]);
+    c.grid.offsetX = 7;
+    c.grid.offsetY = -4;
+    const f = resolveLayout(c);
+    expect(pockets(f).map((p) => [p.anchor, p.placed.x, p.placed.y])).toEqual([
+      [[-23, -4], -23, -4],
+      [[37, -4], 39, -7],
+    ]);
+    // the holes follow the pockets, the rockers stay inside them
+    for (const p of pockets(f)) expect(pointInPlaced(p.anchor, p.holes[0])).toBe(true);
   });
 
   it('features sit on their anchors (+dx/dy) with ids cXrY', () => {

@@ -7,6 +7,7 @@ import { defaultOutlet } from '../derive';
 import { Group } from '../components/Section';
 import { CheckField, NumberField, Segmented, SelectField, type SelectOption } from '../components/fields';
 import { LayoutSvg, type Cell } from './LayoutSvg';
+import { GridOffsetFields } from './PlatePanel';
 
 const ROLE_OPTIONS: SelectOption<ModuleRole>[] = [
   { value: 'bilresa', label: 'Bilresa pocket' },
@@ -102,6 +103,7 @@ export function ModulesPanel({ config, frame, update, selected, onSelect }: Modu
         <span className="lg lg-hole">Access hole</span>
         <span className="lg lg-cover">Cover outline</span>
       </div>
+      <GridOffsetFields config={config} update={update} />
 
       <div className="module-editor">
         <h3>

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { getPreset } from '../../config/presets';
 import type { CoverConfig } from '../../config/schema';
 import type { ConfigUpdater } from '../hooks/useConfig';
@@ -7,6 +8,48 @@ import { NumberField } from '../components/fields';
 interface PlatePanelProps {
   config: CoverConfig;
   update(fn: ConfigUpdater): boolean;
+}
+
+/**
+ * Grid offset inputs (shift of the whole module grid from the plate centre), behind an
+ * "advanced" disclosure: most plates centre their devices, a few (the Swiss switch + socket
+ * combo) do not. Used by the Plate panel and the module editor.
+ */
+export function GridOffsetFields({ config, update }: PlatePanelProps) {
+  const { grid } = config;
+  const shifted = grid.offsetX !== 0 || grid.offsetY !== 0;
+  // Opens by itself for a shifted grid (e.g. after loading the combo preset), never closes by itself.
+  const [open, setOpen] = useState(shifted);
+  useEffect(() => {
+    if (shifted) setOpen(true);
+  }, [shifted]);
+  return (
+    <details className="advanced-disclosure" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary>
+        Advanced: grid offset{shifted && <span className="muted"> ({grid.offsetX}, {grid.offsetY} mm)</span>}
+      </summary>
+      <NumberField
+        label="Grid offset X"
+        unit="mm"
+        value={grid.offsetX}
+        min={-200}
+        max={200}
+        step={0.5}
+        hint="Moves every module (and its anchor) right of the plate centre."
+        onChange={(v) => update((c) => void (c.grid.offsetX = v))}
+      />
+      <NumberField
+        label="Grid offset Y"
+        unit="mm"
+        value={grid.offsetY}
+        min={-200}
+        max={200}
+        step={0.5}
+        hint="Moves every module up (devices not centred on the plate)."
+        onChange={(v) => update((c) => void (c.grid.offsetY = v))}
+      />
+    </details>
+  );
 }
 
 /** Drop modules that no longer fit the grid (resolveLayout would only warn about them). */
@@ -100,6 +143,7 @@ export function PlatePanel({ config, update }: PlatePanelProps) {
           step={1}
           onChange={(v) => update((c) => void (c.grid.pitchY = v))}
         />
+        <GridOffsetFields config={config} update={update} />
       </Group>
     </>
   );
