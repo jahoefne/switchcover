@@ -4,9 +4,9 @@ Turn dumb Swiss light switches into smart ones without an electrician.
 
 switchcover is a fully client-side web app that generates printable `.stl` covers for
 existing light-switch plates. A cover is a hollow cap glued to the wall over the old plate.
-Its face carries recessed pockets for IKEA **Bilresa** smart switches (held by IKEA's
-magnetic metal strip), cut-outs for power outlets sharing the plate, and hidden access
-holes behind each Bilresa so the old switch stays reachable. Pick a preset (Swiss Feller
+Its face carries recessed pockets for IKEA **Bilresa** smart switches (seated back-first and
+held by IKEA's magnetic metal strip), cut-outs for power outlets sharing the plate, and a
+hidden access hole behind each Bilresa so the old switch stays reachable. Pick a preset (Swiss Feller
 STANDARDdue first, DE/EU frames as secondary data), choose a style, tweak parameters,
 preview in 3D, download the STL and share the configuration via the URL.
 
@@ -20,17 +20,18 @@ Live: <https://jahoefne.github.io/switchcover/>
 - **Modules**: click a grid cell to make it a Bilresa pocket (two-button or scroll wheel,
   rotation, dx/dy, own pocket depth, finger notch on/off), a socket opening (round, rounded
   rect or stadium, any size), a passthrough or blank. Pockets that would collide are spread
-  apart automatically (with a note), and every pocket gets hidden access holes to the old
-  rocker underneath.
+  apart automatically (with a note), and every pocket gets a hidden access hole to the old
+  rocker underneath (see "Bilresa pocket and magnet strip").
 - **Styles** (see below) with their own parameters; the cover size follows the plate, the
   features and the style (or a manual size ≥ the automatic one).
 - **Live 3D preview** (three.js) with translucent ghosts of the plate and the Bilresa, a
   checks list (warnings with the module they refer to), height and weight estimates.
 - **Download STL** (rebuilt at export quality, binary STL in the print orientation) and a
-  **test-fit STL**: one pocket with a 3 mm rim, built from the same feature code, for
-  checking the Bilresa fit and the magnet-strip indent with 10–20 g of filament before printing
-  the whole cover.
-- **Share links**: the whole configuration lives in the URL hash (`#v1.…`).
+  **test-fit STL**: one pocket with a 3 mm rim, built from the same feature code (nested
+  pocket, strip indent and ledges, access hole, finger notch), for checking the Bilresa fit
+  and the magnet strip with 10–20 g of filament before printing the whole cover.
+- **Share links**: the whole configuration lives in the URL hash (`#v2.…`; older `#v1.`
+  links still open and are migrated).
 
 ## Styles and print orientation
 
@@ -45,11 +46,15 @@ Live: <https://jahoefne.github.io/switchcover/>
 The export panel shows each style's print hint; the orientation can be overridden there.
 Face-down exports are **rotated** 180° about Y, not mirrored, so the face lies flat on the
 bed. Seen from above in the slicer the layout therefore looks mirrored — that is correct: the
-left switch is still on the left once the cover hangs on the wall. Pocket floors bridge face
-down; enable supports inside the pockets if your printer bridges poorly.
+left switch is still on the left once the cover hangs on the wall.
 
-Print the test-fit part first, check that the Bilresa seats and comes out with the finger
-notch, then print the cover.
+Face down, a pocket opens onto the bed: its straight wall and the nested fillet wall above it
+lean in gradually and print without support. Only what is left of the pocket floor beside the
+access hole (the strip's glue ledges) bridges across the pocket; enable supports inside the
+pockets if your printer bridges poorly.
+
+Print the test-fit part first, check that the Bilresa seats, that the strip sits on its
+ledges and that the Bilresa comes out with the finger notch, then print the cover.
 
 ## Development
 
@@ -69,15 +74,15 @@ Pushing to `main` runs `.github/workflows/deploy.yml`: tests, build, deploy to G
 ### Layout
 
 ```
-src/config/    zod schema (CoverConfig v1), defaults (ONE place for measurements), presets,
-               migrate, URL codec (#v1.<lz-string>)
+src/config/    zod schema (CoverConfig v2), defaults (ONE place for measurements), presets,
+               migrate (v1 → v2), URL codec (#v2.<lz-string>, reads #v1.)
 src/layout/    resolveLayout: config → CoverFrame (pure TS, no WASM)
 src/geometry/  contract.ts (all shared types), shape2d.ts, kit/ (manifold-3d helpers +
                memory scopes), features/ (pockets, openings, cavity), buildCover.ts,
                buildTestFit.ts, export/stl.ts; rules in src/geometry/README.md
 src/styles/    style registry + styles (minimal, organic, faceted, stepped, box; common/ helpers)
 src/worker/    geometry worker + client (one build in flight, newest wins)
-src/ui/        React app + three.js viewer
+src/ui/        React app + three.js viewer (viewer/ghost.ts: where the Bilresa ghost goes)
 test/          vitest suites; test/helpers/manifold.ts initialises WASM once per file
 ```
 
@@ -95,19 +100,48 @@ Identical in config, layout, geometry and viewer:
   axis along Y.
 - Only `resolveLayout` converts conventions. Never feed DOM/screen coordinates into geometry.
 - Height chain: `frontZ = plate.depth + rockerGap + floorT + pocketDepth`
-  (≈ 12 + 2 + 2.4 + 9 mm), with `floorT ≥ strip.protrusion + print.tolerance + 1.2`.
+  (≈ 12 + 2 + 2.4 + 10 = 26.4 mm), with `floorT ≥ strip.protrusion + print.tolerance + 1.2`.
+  The Bilresa's back rests on the floor (`floorZ = frontZ − pocketDepth`), its front stands
+  18.5 − pocketDepth proud of the face (8.5 mm by default).
 - Face-down export is a **rotation** of 180° about Y, (x, y, z) → (−x, y, −z), then a
   translation to min z = 0 — never a mirror. Seen from above in the slicer the layout
   therefore looks mirrored; that is correct (the left switch is still on the left when the
   cover hangs on the wall).
 
-## Magnet strip: placeholder dimensions
+## Bilresa pocket and magnet strip
 
-The Bilresa is held by IKEA's metal strip, which sits in an indent in the pocket floor and
-in the Bilresa's own back recess. **Its real dimensions have not been measured yet.** The
-defaults are a placeholder (`DEFAULT_BILRESA.strip` in `src/config/defaults.ts`, also
-editable in the advanced settings). Before printing a full cover, measure a real strip (or
-print the test-fit part) and correct the values in that one place.
+Measured from `model/*.stl` (long axis along Y). The STL's flat z = 0 face, with the two
+buttons, is the Bilresa's **front**; the rounded end is its **back**, which faces the wall.
+The body keeps its full outline (40 × 70 two-button, 45 × 70 wheel) for 10 mm from the front,
+then rounds off with an exact R8 quarter round into a flat back 18.5 mm behind the front
+(24 × 54 / 29 × 54). On the back flat sits a 1 mm proud stadium rim, the recess of IKEA's
+glue-on metal strip (≈ 22 × 51 mm, ≈ 1 mm proud once in place). All of it lives in
+`BILRESA_VARIANTS` / `DEFAULT_BILRESA` in `src/config/defaults.ts`.
+
+- **Nested pocket.** The Bilresa sits back-first. From the floor up, the pocket wall follows
+  its R8 back fillet (+ `pocketClearance`), then runs straight to the face; the default depth
+  10 mm is 8 mm of fillet + 2 mm of straight engagement (minimum 8.5). The well around it
+  follows the same profile offset by `minWall`, so the wall is uniform and no material hangs
+  uselessly in the cavity.
+- **Magnet strip and glue ledges.** The floor has an indent of strip + 2 · tolerance,
+  protrusion + tolerance deep (22.4 × 51.4 × 1.2 mm by default). Glue the strip onto the two
+  end ledges of that indent (`stripLedge`, ≥ 4 mm each); it spans the access hole between them.
+- **Access hole.** One hole per pocket, centred on the pocket and oriented with it: as wide as
+  `access.w` (34 mm) but never closer than `hiddenMargin` to the pocket outline, as long as the
+  strip minus both ledges, shortened if needed so it stays hidden behind the Bilresa (39 mm by
+  default, so the ledges are ≈ 6 mm). It cuts through the floor and the foot of the fillet
+  wall. The ≈ 6 mm gaps beside the strip are the access: press the old rocker with a thin tool
+  (the checks list notes gaps under 8 mm). The rocker centre must lie inside the hole (error
+  otherwise).
+- **Finger notch.** Ø 14 mm at the pocket's end farthest from the plate centre, cut from the
+  face down to 2 mm above the floor so a fingertip reaches the Bilresa's rounded edge to lift
+  it out. Its backing is merged into the skirt when it would end less than `minWall` short of it.
+- **Ghost.** The viewer shows the STL without tilting it: moved to (pocket x, y,
+  floorZ + 18.5) and turned with the pocket.
+
+Note: in the STL the strip rim is 52 mm long (with a small flat at one end), while the default
+strip is 51 mm, so the rim's tips touch the indent's ends by ~0.3 mm. If your strip measures
+more than 51 mm, raise the strip length (the test-fit part shows it).
 
 ## Adding a style
 

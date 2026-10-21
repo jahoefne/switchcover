@@ -45,11 +45,11 @@ cover  = shell − union(cuts + style.decorate().subtract)
 | feature | kind | z range |
 |---|---|---|
 | cavity | cut (own stage) | outer inset by skirtT, [−0.1, frontZ − skinT]; open to the wall |
-| pocketWell | add | pocket + minWall, [floorZ − floorT, face max + 0.1] |
-| pocketVoid | cut | pocket, [floorZ, face], rim = `style.pocketEdge` (default chamfer 0.6) |
+| pocketWell | add | loft of the void's profile offset by minWall (concentric arc around the back fillet), [floorZ − floorT, face max + 0.1]; + slab strip + minWall under the ledges |
+| pocketVoid | cut | nested: loft of pocket inset by `backFilletInset(r, h)`, [floorZ, floorZ + r] (12 arc segments); then pocket, [floorZ + r − 0.1, face], rim = `style.pocketEdge` (default chamfer 0.6) |
 | stripIndent | cut | strip, [floorZ − stripDepth, floorZ + 0.1] |
-| accessHoles | cut | each hole, [min(floor underside, cavity ceiling) − 0.1, floorZ + 0.1] |
-| notch | add + cut | backing well (circle + minWall) like the pocket well; void [floorZ, face] with the pocket rim edge |
+| accessHoles | cut | the bridge hole, [min(floor underside, cavity ceiling) − 0.1, floorZ + holeExitHeight + 0.1] (through the floor and the foot of the fillet wall) |
+| notch | add + cut | backing (circle + minWall) from notchFloor − minWall up, bridged to the skirt when 0 … minWall short of it; void [floorZ + 2, face] with the pocket rim edge |
 | opening | cut | outlet: `style.openingEdge`, passthrough: chamfer 0.6; [cavity ceiling − 0.1, face] + plain through-prism |
 
 - Adds (wells) are carved out of the cavity instead of unioned onto the body, so they can
@@ -88,8 +88,8 @@ severity-`'error'` warnings (`geometry-*`); the mesh is still returned.
 
 Counting through-holes: the open-bottom shell is a cup (genus 0). Pockets, strip indents
 and notches are blind (floor below, wells / backing around), so they add nothing. Every
-opening and every access hole that overlaps the cavity footprint joins the face side to the
-wall side and adds exactly one handle (two holes in one pocket = two). The check is skipped
+opening and every pocket's (single) bridge access hole that overlaps the cavity footprint
+joins the face side to the wall side and adds exactly one handle. The check is skipped
 when the resolver reports `feature-overlap` (merged cuts merge holes; already reported).
 
 ## Worker
