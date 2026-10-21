@@ -92,10 +92,10 @@ export function offsetProfile(chain: Vec2[], walls: Walls, zBottom: number): Vec
   return out.sort((p, q) => p[1] - q[1] || p[0] - q[0]);
 }
 
-/** Rings of `outline` at every profile vertex (inset `baseInset + d`, height z). */
-export function profileRings(kit: Kit, outline: Placed, verts: Vec2[], baseInset = 0): Vec3[] {
+/** Rings of `outline` at every profile vertex (inset d, height z). */
+export function profileRings(kit: Kit, outline: Placed, verts: Vec2[]): Vec3[] {
   const pts: Vec3[] = [];
-  for (const [d, z] of verts) pts.push(...kit.ring(outline, baseInset + d, z));
+  for (const [d, z] of verts) pts.push(...kit.ring(outline, d, z));
   return pts;
 }
 

@@ -481,6 +481,15 @@ describe('timing (largest preset)', () => {
               `stub build ${(t3 - t2).toFixed(1)} ms / ${built.numTri()} tris`,
           );
           expect(body.status()).toBe('NoError');
+          expect(built.status()).toBe('NoError');
+          // the decorated shell is valid at this quality too
+          const cavity = qk.prism(outerPlaced(frame, frame.skirtT), -OVERSHOOT, frame.frontZ - frame.skinT);
+          let shell = body.subtract(cavity);
+          if (dec.add) shell = shell.add(dec.add);
+          if (dec.subtract) shell = shell.subtract(dec.subtract);
+          expect(shell.status()).toBe('NoError');
+          expect(shell.decompose().length).toBe(1);
+          expect(shell.genus()).toBe(0);
         }
         return null;
       });
