@@ -85,6 +85,30 @@ const B: ModuleSpec = { role: 'bilresa' };
 const B90: ModuleSpec = { role: 'bilresa', rot: 90 };
 const O: ModuleSpec = { role: 'outlet' };
 
+/**
+ * Feller STANDARDdue "Kleinkombination": one switch and one Type 13 socket on ONE 90 × 90 plate
+ * (user-measured). The switch key (≈ 60 × 22) is centred 26 mm below the plate's top edge
+ * (y = 45 − 26 = +19), the socket recess 57 mm below it (y = 45 − 57 = −12). A 1 × 2 grid with
+ * pitchY 31 shifted up by offsetY 3.5 puts the two anchors exactly there: (31/2 + 3.5, −31/2 + 3.5).
+ *
+ * The two-button Bilresa lies horizontally (rot 90: 70.6 wide × 40.6 tall with clearance) above
+ * the Ø46 opening. Its dy is the smallest that clears the opening in the default minimal style:
+ *   opening top −12 + 23 = 11; + minWall 2 + minimal's edge allowances (socket chamfer 1, pocket
+ *   chamfer 0.6) = 14.6 = pocket bottom; pocket centre 14.6 + 20.3 = 34.9 → dy = 34.9 − 19 = 15.9,
+ * so minimal (and box) need no automatic spreading. The pocket does not fit the plate's height
+ * (top 34.9 + 20.3 = 55.2 > 45), so the cover grows UPWARDS only (user decision): minimal
+ * 96.8 × 110.2 mm centred 6.7 mm above the plate centre (bottom at the plate-driven −48.4, top
+ * at pocket top + minWall 2 + margin 4 + chamfer 0.6 = 61.8), the socket stays near the bottom.
+ *
+ * Access: the 34 × 39.12 bridge hole spans y 17.9 … 51.9, so the key centre (+19) is 1.1 mm inside
+ * it; the strip indent covers y 23.7 … 46.1, leaving the lower tool gap y 17.9 … 23.7 over the
+ * key band (y 8 … 30) and an upper gap y 46.1 … 51.9 above the key. Styles with wider edges
+ * (organic, faceted, stepped) spread the pocket up, but never beyond y = 36, where the key centre
+ * would leave the hole (resolveLayout); their socket edge shrinks instead (edge-reduced note).
+ * The finger notch sits at the pocket's +x end (a horizontal pocket's two ends tie).
+ */
+const COMBO_BILRESA_DY = 15.9;
+
 function preset(
   id: string,
   label: string,
@@ -109,6 +133,14 @@ function customPreset(): Preset {
 
 export const PRESETS: readonly Preset[] = deepFreeze([
   preset('ch-sd-1x1', 'CH 1×1 — switch', 'STANDARDdue 90×90, one Bilresa.', CH_STANDARDDUE, [[B]]),
+  preset(
+    'ch-sd-1x1-combo',
+    'CH 1×1 — switch + socket combo',
+    'STANDARDdue 90×90 combo plate (switch above a Type 13 socket): Bilresa lying above the socket; the cover grows upwards.',
+    CH_STANDARDDUE,
+    [[{ role: 'bilresa', rot: 90, dy: COMBO_BILRESA_DY }], [O]],
+    { plateModules: { cols: 1, rows: 1 }, grid: { pitchY: 31, offsetY: 3.5 } },
+  ),
   preset(
     'ch-sd-1x2v-switch-socket',
     'CH 1×2 vertical — switch + socket',

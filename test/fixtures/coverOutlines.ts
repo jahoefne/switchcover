@@ -14,7 +14,9 @@
  * give back the old size. Those are the covers whose single finger notch pokes past the plate's
  * frame on one side only: the DE presets (minimal, stepped, box: the notch at the bottom end of a
  * centred pocket) and the switch + socket layouts in the organic and faceted styles (the spread
- * pocket's notch at the top).
+ * pocket's notch at the top). The CH 1×1 combo (added with this rule) is the case it is for: its
+ * Bilresa lies above the plate's top edge, so the cover grows upwards only and keeps the socket
+ * near its bottom; its `symmetric` is what the former rule would have made of it.
  *
  * Do NOT regenerate this for a refactor; change it only with an intentional geometry change.
  */
@@ -29,6 +31,7 @@ export interface CoverOutline {
 
 export const COVER_OUTLINES: Record<string, CoverOutline> = {
   'minimal ch-sd-1x1': { w: 96.8, h: 96.8, cx: 0, cy: 0 },
+  'minimal ch-sd-1x1-combo': { w: 96.8, h: 110.2, cx: 0, cy: 6.7, symmetric: { w: 96.8, h: 123.6 } },
   'minimal ch-sd-1x2v-switch-socket': { w: 96.8, h: 156.8, cx: 0, cy: 0 },
   'minimal ch-sd-2x1h-two-switches': { w: 156.8, h: 96.8, cx: 0, cy: 0 },
   'minimal ch-sd-1x2v-two-switches': { w: 96.8, h: 156.8, cx: 0, cy: 0 },
@@ -40,6 +43,7 @@ export const COVER_OUTLINES: Record<string, CoverOutline> = {
   'minimal de-2x1h': { w: 158.8, h: 88.8, cx: 0, cy: -0.5, symmetric: { w: 158.8, h: 89.8 } },
   'minimal custom': { w: 96.8, h: 96.8, cx: 0, cy: 0 },
   'organic ch-sd-1x1': { w: 101.33, h: 101.33, cx: 0, cy: 0 },
+  'organic ch-sd-1x1-combo': { w: 101.33, h: 117.47, cx: 0, cy: 8.0679, symmetric: { w: 101.33, h: 133.61 } },
   'organic ch-sd-1x2v-switch-socket': { w: 101.33, h: 164.27, cx: 0, cy: 1.4679, symmetric: { w: 101.33, h: 167.2 } },
   'organic ch-sd-2x1h-two-switches': { w: 161.33, h: 101.33, cx: 0, cy: 0 },
   'organic ch-sd-1x2v-two-switches': { w: 101.33, h: 161.33, cx: 0, cy: 0 },
@@ -51,6 +55,7 @@ export const COVER_OUTLINES: Record<string, CoverOutline> = {
   'organic de-2x1h': { w: 162.75, h: 91.75, cx: 0, cy: 0 },
   'organic custom': { w: 101.33, h: 101.33, cx: 0, cy: 0 },
   'faceted ch-sd-1x1': { w: 96.8, h: 96.8, cx: 0, cy: 0 },
+  'faceted ch-sd-1x1-combo': { w: 96.8, h: 117.3, cx: 0, cy: 9.65, symmetric: { w: 96.8, h: 136.6 } },
   'faceted ch-sd-1x2v-switch-socket': { w: 96.8, h: 160, cx: 0, cy: 1.6, symmetric: { w: 96.8, h: 163.2 } },
   'faceted ch-sd-2x1h-two-switches': { w: 156.8, h: 96.8, cx: 0, cy: 0 },
   'faceted ch-sd-1x2v-two-switches': { w: 96.8, h: 156.8, cx: 0, cy: 0 },
@@ -62,6 +67,7 @@ export const COVER_OUTLINES: Record<string, CoverOutline> = {
   'faceted de-2x1h': { w: 158.8, h: 94.6, cx: 0, cy: 0 },
   'faceted custom': { w: 96.8, h: 96.8, cx: 0, cy: 0 },
   'stepped ch-sd-1x1': { w: 96.8, h: 96.8, cx: 0, cy: 0 },
+  'stepped ch-sd-1x1-combo': { w: 96.8, h: 112.2, cx: 0, cy: 7.7, symmetric: { w: 96.8, h: 127.6 } },
   'stepped ch-sd-1x2v-switch-socket': { w: 96.8, h: 156.8, cx: 0, cy: 0 },
   'stepped ch-sd-2x1h-two-switches': { w: 156.8, h: 96.8, cx: 0, cy: 0 },
   'stepped ch-sd-1x2v-two-switches': { w: 96.8, h: 156.8, cx: 0, cy: 0 },
@@ -73,6 +79,7 @@ export const COVER_OUTLINES: Record<string, CoverOutline> = {
   'stepped de-2x1h': { w: 158.8, h: 88.8, cx: 0, cy: -0.5, symmetric: { w: 158.8, h: 89.8 } },
   'stepped custom': { w: 96.8, h: 96.8, cx: 0, cy: 0 },
   'box ch-sd-1x1': { w: 96.8, h: 96.8, cx: 0, cy: 0 },
+  'box ch-sd-1x1-combo': { w: 96.8, h: 109.6, cx: 0, cy: 6.4, symmetric: { w: 96.8, h: 122.4 } },
   'box ch-sd-1x2v-switch-socket': { w: 96.8, h: 156.8, cx: 0, cy: 0 },
   'box ch-sd-2x1h-two-switches': { w: 156.8, h: 96.8, cx: 0, cy: 0 },
   'box ch-sd-1x2v-two-switches': { w: 96.8, h: 156.8, cx: 0, cy: 0 },

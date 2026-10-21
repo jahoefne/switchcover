@@ -10,7 +10,7 @@ import type { CoverConfig } from '../src/config/schema';
 import { buildCover } from '../src/geometry/buildCover';
 import type { CoverFrame, EdgeProfile, Kit, Placed, StyleCtx } from '../src/geometry/contract';
 import { OVERSHOOT, liveObjectCount, withScope, type Walls } from '../src/geometry/kit';
-import { insideDistance, offsetPlaced, outlineWorld, placedDistance } from '../src/geometry/shape2d';
+import { insideDistance, offsetPlaced, outlineWorld, placedDistance, pointInPlaced } from '../src/geometry/shape2d';
 import { outerPlaced, resolveLayout } from '../src/layout/resolve';
 import { getStyle, listStyles, stylePrintOrientation, type AnyCoverStyle } from '../src/styles';
 import { availableEdgeRoom, bodyPlaced, edgeWidth, type EdgeWants } from '../src/styles/common/frame';
@@ -478,9 +478,39 @@ describe('organic dome', () => {
 
 // --- full-size edges in the shipped presets -------------------------------------------------
 
+/**
+ * Where the resolver holds a pocket back so its rocker stays inside the access hole (see
+ * spreadPockets): the combo plate's socket edge in the styles with wide socket edges.
+ */
+const ROCKER_HELD = new Set(['organic ch-sd-1x1-combo', 'faceted ch-sd-1x1-combo']);
+
 describe('full-size edges in every Swiss preset (the resolver leaves room, nothing shrinks)', () => {
   const swiss = PRESET_IDS.filter((id) => id.startsWith('ch-sd-'));
-  const cases = SPECS.flatMap((spec) => swiss.map((id) => [spec.id, id, spec] as const));
+  const cases = SPECS.flatMap((spec) => swiss.filter((id) => !ROCKER_HELD.has(`${spec.id} ${id}`)).map((id) => [spec.id, id, spec] as const));
+
+  it.each([...ROCKER_HELD])('%s: the pocket stops where its rocker would leave the access hole; the socket edge shrinks', (key) => {
+    const [styleId, presetId] = key.split(' ');
+    const spec = SPECS.find((x) => x.id === styleId)!;
+    const { style, params, frame, ctx } = setup(spec, presetId, {});
+    const full = spec.full(params);
+    expect(frame.warnings.map((w) => w.code)).toContain('edge-reduced');
+    expect(frame.warnings.filter((w) => w.severity !== 'info')).toEqual([]);
+    const pocket = frame.features.find((f) => f.kind === 'pocket')!;
+    const outlet = frame.features.find((f) => f.kind === 'opening')!;
+    // the rocker (anchor) sits on the hole's edge, the wall keeps more than minWall
+    expect(pocket.kind === 'pocket' && pointInPlaced(pocket.anchor, pocket.holes[0], 1e-6)).toBe(true);
+    expect(placedDistance(pocket.placed, outlet.placed)).toBeGreaterThan(frame.minWall);
+    // the spare wall (gap − minWall) is shared (availableEdgeRoom): each edge gets at least half of
+    // it, never more than its full size; the wide socket edge is the one that shrinks
+    const spare = placedDistance(pocket.placed, outlet.placed) - frame.minWall;
+    const pocketEdge = edgeWidth(style.pocketEdge!(ctx, pocket));
+    expect(pocketEdge).toBeCloseTo(Math.min(edgeWidth(full.pocket), Math.max(spare / 2, spare - edgeWidth(full.opening))), 6);
+    const edge = edgeWidth(style.openingEdge(ctx, outlet));
+    expect(edge).toBeGreaterThanOrEqual(spare / 2 - 1e-6);
+    expect(edge).toBeLessThan(edgeWidth(full.opening));
+    expect(edge + pocketEdge).toBeLessThanOrEqual(spare + 1e-6);
+  });
+
   it.each(cases)('%s × %s', (_styleId, presetId, spec) => {
     const { style, cfg, params, frame, ctx } = setup(spec, presetId, {});
     const full = spec.full(params);

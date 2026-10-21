@@ -3,6 +3,7 @@ import { BILRESA_VARIANTS, DEFAULT_BILRESA, DEFAULT_COVER, DEFAULT_PRINT, MIN_PO
 import { V1_STRIP_PLACEHOLDER, migrateConfig } from '../src/config/migrate';
 import { DEFAULT_PRESET_ID, getPreset, listPresets, presetConfig } from '../src/config/presets';
 import { CoverConfigSchema, DEFAULT_CONFIG, cloneConfig } from '../src/config/schema';
+import { moduleAnchor } from '../src/layout/resolve';
 
 describe('defaults', () => {
   it('Bilresa variants match the measured STLs (front outline, back flat, R8 back fillet, strip rim)', () => {
@@ -59,6 +60,7 @@ describe('presets', () => {
   const expected: Array<[string, number, number, number, number]> = [
     // id, plate w, plate h, cols, rows
     ['ch-sd-1x1', 90, 90, 1, 1],
+    ['ch-sd-1x1-combo', 90, 90, 1, 2],
     ['ch-sd-1x2v-switch-socket', 90, 150, 1, 2],
     ['ch-sd-2x1h-two-switches', 150, 90, 2, 1],
     ['ch-sd-1x2v-two-switches', 90, 150, 1, 2],
@@ -96,6 +98,21 @@ describe('presets', () => {
     expect(roles('ch-sd-2x2')).toEqual(['bilresa', 'bilresa', 'outlet', 'outlet']);
     const outlet = getPreset('ch-sd-1x2v-switch-socket')!.config.modules[1];
     expect(outlet.opening).toEqual({ shape: 'circle', d: 46 });
+  });
+
+  it('the combo plate: two rows on ONE 90 × 90 plate, grid shifted onto the key and the socket', () => {
+    const c = getPreset('ch-sd-1x1-combo')!.config;
+    expect(c.grid).toEqual({ cols: 1, rows: 2, pitchX: 60, pitchY: 31, offsetX: 0, offsetY: 3.5 });
+    // key centre 26 mm, socket centre 57 mm below the plate's top edge (45)
+    expect(moduleAnchor(c.grid, 0, 0)).toEqual([0, 45 - 26]);
+    expect(moduleAnchor(c.grid, 0, 1)).toEqual([0, 45 - 57]);
+    expect(c.modules).toEqual([
+      { col: 0, row: 0, role: 'bilresa', rot: 90, dx: 0, dy: 15.9, bilresa: { variant: '2button' } },
+      { col: 0, row: 1, role: 'outlet', rot: 0, dx: 0, dy: 0, opening: { shape: 'circle', d: 46 } },
+    ]);
+    // right after the plain 1×1 in the list
+    const ids = listPresets().map((p) => p.id);
+    expect(ids.indexOf('ch-sd-1x1-combo')).toBe(ids.indexOf('ch-sd-1x1') + 1);
   });
 
   it('presetConfig returns a mutable copy and falls back to the default', () => {
