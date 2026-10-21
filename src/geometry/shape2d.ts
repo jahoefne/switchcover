@@ -98,9 +98,10 @@ export function shapeRadius(shape: Shape2D): number {
 
 /**
  * Outline of `shape` offset inward by `inset`, in the shape's local frame, CCW, starting
- * at the +X/+Y corner. Each rounded corner gets `segments / 4` points (segments is the
- * full-circle count, rounded up to a multiple of 4); sharp corners get one point.
- * Consecutive duplicates are removed.
+ * at the +X/+Y corner. Each rounded corner is a quarter arc sampled with `segments / 4`
+ * segments (segments = full-circle count, rounded up to a multiple of 4), endpoints
+ * included; sharp corners get one point. Coincident neighbours (circle / stadium ends) are
+ * merged, so a circle has exactly `segments` points.
  */
 export function outlineLocal(shape: Shape2D, inset: number, segments: number): Vec2[] {
   const { hx, hy, r } = insetCore(shape, inset);
@@ -117,7 +118,7 @@ export function outlineLocal(shape: Shape2D, inset: number, segments: number): V
       pts.push([cx, cy]);
       continue;
     }
-    for (let i = 0; i < q; i++) {
+    for (let i = 0; i <= q; i++) {
       const a = (a0 + (90 * i) / q) * DEG;
       pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
     }
