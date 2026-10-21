@@ -108,6 +108,19 @@ describe('App', () => {
     expect((screen.getByLabelText('Role') as HTMLSelectElement).value).toBe('bilresa');
   });
 
+  it('selects grid cells by click and keyboard', () => {
+    setHash(encodeHash(presetConfig('ch-sd-2x2')));
+    renderApp();
+    const outlet = screen.getByRole('button', { name: 'Column 2, row 2: outlet' });
+    fireEvent.keyDown(outlet, { key: 'Enter' });
+    expect(outlet.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText(/Column 2, row 2/, { selector: 'h3' })).toBeTruthy();
+    expect((screen.getByLabelText('Role') as HTMLSelectElement).value).toBe('outlet');
+    fireEvent.click(screen.getByRole('button', { name: 'Column 1, row 1: bilresa' }));
+    expect((screen.getByLabelText('Role') as HTMLSelectElement).value).toBe('bilresa');
+    expect(screen.getByLabelText('Variant')).toBeTruthy();
+  });
+
   it('marks the plate as custom when its size changes', async () => {
     renderApp();
     const plate = document.getElementById('plate') as HTMLElement;

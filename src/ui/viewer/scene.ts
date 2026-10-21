@@ -222,6 +222,8 @@ export class CoverScene {
     if (this.disposed) return;
     this.options = { ...this.options, ...options };
     this.coverMaterial.wireframe = this.options.wireframe;
+    // Lit wire lines read too dark on the dark background; lift them a little.
+    this.coverMaterial.emissive.setHex(this.options.wireframe ? 0x6a6660 : 0x000000);
     this.plateGroup.visible = this.options.showPlate;
     this.bilresaGroup.visible = this.options.showBilresa;
     this.requestRender();
