@@ -68,7 +68,9 @@ describe('toBinaryStl format', () => {
       const { manifold } = buildCover(kit, layoutConfig('ch-sd-1x2v-switch-socket', 'minimal'));
       for (const orientation of ['faceUp', 'faceDown'] as const) {
         const mesh = parseBinaryStl(toBinaryStl(manifold, { orientation }));
-        expect(mesh.indices.length / 3).toBe(manifold.numTri());
+        // degenerate (float32-collapsed) triangles are dropped by the writer, never more than a few percent
+        expect(mesh.indices.length / 3).toBeLessThanOrEqual(manifold.numTri());
+        expect(mesh.indices.length / 3).toBeGreaterThan(manifold.numTri() * 0.95);
         expect(signedVolume(mesh.positions, mesh.indices)).toBeCloseTo(manifold.volume(), 0);
         const back = manifoldOfMesh(wasm, mesh);
         expect(back.status()).toBe('NoError');

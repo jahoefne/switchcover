@@ -84,17 +84,43 @@ function writeHeader(view: DataView, text: string): void {
   for (let i = 0; i < STL_HEADER_BYTES; i++) view.setUint8(i, i < h.length ? h.charCodeAt(i) : 0x20);
 }
 
+/**
+ * Triangles that survive the float32 quantisation of the STL format. manifold-3d can emit
+ * distinct vertices whose coordinates coincide once rounded to float32; the triangles between
+ * them collapse to zero area and, as a triangle soup, show up in slicers as degenerate faces and
+ * "non-manifold edges" that get auto-repaired. Dropping them leaves a closed surface by position.
+ */
+export function nonDegenerateTriangles(p: ArrayLike<number>, indices: ArrayLike<number>): number[] {
+  const out: number[] = [];
+  const nTri = Math.floor(indices.length / 3);
+  const q = (i: number) => [Math.fround(p[i]), Math.fround(p[i + 1]), Math.fround(p[i + 2])] as const;
+  const same = (u: readonly number[], v: readonly number[]) => u[0] === v[0] && u[1] === v[1] && u[2] === v[2];
+  for (let t = 0; t < nTri; t++) {
+    const a = q(3 * indices[3 * t]);
+    const b = q(3 * indices[3 * t + 1]);
+    const c = q(3 * indices[3 * t + 2]);
+    if (same(a, b) || same(b, c) || same(c, a)) continue;
+    const nx = (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]);
+    const ny = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]);
+    const nz = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    if (nx === 0 && ny === 0 && nz === 0) continue;
+    out.push(t);
+  }
+  return out;
+}
+
 /** Encode a Manifold or plain mesh as binary STL in the requested print orientation. */
 export function toBinaryStl(input: Manifold | StlMesh, options: StlOptions = {}): ArrayBuffer {
   const { positions, indices } = meshArrays(input);
   const p = orientPositions(positions, options.orientation ?? 'faceUp');
-  const nTri = Math.floor(indices.length / 3);
+  const tris = nonDegenerateTriangles(p, indices);
+  const nTri = tris.length;
   const buffer = new ArrayBuffer(STL_HEADER_BYTES + 4 + STL_TRIANGLE_BYTES * nTri);
   const view = new DataView(buffer);
   writeHeader(view, options.header ?? DEFAULT_HEADER);
   view.setUint32(STL_HEADER_BYTES, nTri, true);
   let o = STL_HEADER_BYTES + 4;
-  for (let t = 0; t < nTri; t++) {
+  for (const t of tris) {
     const a = 3 * indices[3 * t];
     const b = 3 * indices[3 * t + 1];
     const c = 3 * indices[3 * t + 2];
