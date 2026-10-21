@@ -85,27 +85,113 @@ function writeHeader(view: DataView, text: string): void {
 }
 
 /**
- * Triangles that survive the float32 quantisation of the STL format. manifold-3d can emit
- * distinct vertices whose coordinates coincide once rounded to float32; the triangles between
- * them collapse to zero area and, as a triangle soup, show up in slicers as degenerate faces and
- * "non-manifold edges" that get auto-repaired. Dropping them leaves a closed surface by position.
+ * The triangles to write, as vertex-index triples into `p`, after the float32 quantisation of the
+ * STL format. manifold-3d can emit
+ *  - distinct vertices whose coordinates coincide once rounded to float32: the triangles between
+ *    them collapse (two corners at one position) and are dropped — by position the soup stays
+ *    closed, its two neighbours simply meet;
+ *  - zero-area "caps": three distinct but collinear corners (one lies on the edge between the
+ *    other two). Dropping a cap would leave a T-junction (an open edge in slicers, not manifold
+ *    for `Manifold.ofMesh`), so the triangle across its long edge is split at the middle corner
+ *    instead and the cap removed (an edge flip). The split triangles keep the winding.
+ * Everything is judged by float32 position, i.e. on the soup a slicer reads. Returns the triples
+ * in their original order (splits are appended).
  */
-export function nonDegenerateTriangles(p: ArrayLike<number>, indices: ArrayLike<number>): number[] {
-  const out: number[] = [];
+export function stlTriangles(p: ArrayLike<number>, indices: ArrayLike<number>): Array<[number, number, number]> {
   const nTri = Math.floor(indices.length / 3);
-  const q = (i: number) => [Math.fround(p[i]), Math.fround(p[i + 1]), Math.fround(p[i + 2])] as const;
-  const same = (u: readonly number[], v: readonly number[]) => u[0] === v[0] && u[1] === v[1] && u[2] === v[2];
+  // Position ids (float32 bit-identical positions share one id) and a representative vertex.
+  const idOf = new Map<string, number>();
+  const rep: number[] = [];
+  const q: Array<readonly [number, number, number]> = [];
+  const vid = new Map<number, number>();
+  const idFor = (v: number): number => {
+    let id = vid.get(v);
+    if (id !== undefined) return id;
+    const pos = [Math.fround(p[3 * v]), Math.fround(p[3 * v + 1]), Math.fround(p[3 * v + 2])] as const;
+    const key = `${pos[0]},${pos[1]},${pos[2]}`;
+    id = idOf.get(key);
+    if (id === undefined) {
+      id = rep.length;
+      idOf.set(key, id);
+      rep.push(v);
+      q.push(pos);
+    }
+    vid.set(v, id);
+    return id;
+  };
+  const collinear = (a: number, b: number, c: number) => {
+    const [A, B, C] = [q[a], q[b], q[c]];
+    const ux = B[0] - A[0];
+    const uy = B[1] - A[1];
+    const uz = B[2] - A[2];
+    const vx = C[0] - A[0];
+    const vy = C[1] - A[1];
+    const vz = C[2] - A[2];
+    return uy * vz - uz * vy === 0 && uz * vx - ux * vz === 0 && ux * vy - uy * vx === 0;
+  };
+  /** Is corner c between a and b (on the segment)? */
+  const between = (a: number, b: number, c: number) => {
+    const [A, B, C] = [q[a], q[b], q[c]];
+    return (C[0] - A[0]) * (C[0] - B[0]) + (C[1] - A[1]) * (C[1] - B[1]) + (C[2] - A[2]) * (C[2] - B[2]) <= 0;
+  };
+
+  const tris: Array<[number, number, number] | null> = [];
   for (let t = 0; t < nTri; t++) {
-    const a = q(3 * indices[3 * t]);
-    const b = q(3 * indices[3 * t + 1]);
-    const c = q(3 * indices[3 * t + 2]);
-    if (same(a, b) || same(b, c) || same(c, a)) continue;
-    const nx = (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]);
-    const ny = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]);
-    const nz = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
-    if (nx === 0 && ny === 0 && nz === 0) continue;
-    out.push(t);
+    const a = idFor(indices[3 * t]);
+    const b = idFor(indices[3 * t + 1]);
+    const c = idFor(indices[3 * t + 2]);
+    tris.push(a === b || b === c || c === a ? null : [a, b, c]);
   }
+  // Directed edge "a,b" → triangle index.
+  const edges = new Map<string, number>();
+  const link = (t: number, on: boolean) => {
+    const tri = tris[t];
+    if (!tri) return;
+    for (let k = 0; k < 3; k++) {
+      const key = `${tri[k]},${tri[(k + 1) % 3]}`;
+      if (on) edges.set(key, t);
+      else if (edges.get(key) === t) edges.delete(key);
+    }
+  };
+  for (let t = 0; t < tris.length; t++) link(t, true);
+
+  const queue: number[] = [];
+  for (let t = 0; t < tris.length; t++) {
+    const tri = tris[t];
+    if (tri && collinear(...tri)) queue.push(t);
+  }
+  let budget = 4 * queue.length + 16;
+  while (queue.length > 0 && budget-- > 0) {
+    const t = queue.pop()!;
+    const tri = tris[t];
+    if (!tri || !collinear(...tri)) continue;
+    // Rotate so the middle corner is last: (a, b, c), c on the long edge a → b.
+    let k = 0;
+    while (k < 3 && !between(tri[(k + 1) % 3], tri[(k + 2) % 3], tri[k])) k++;
+    if (k === 3) k = 0;
+    const c = tri[k];
+    const a = tri[(k + 1) % 3];
+    const b = tri[(k + 2) % 3];
+    const n = edges.get(`${b},${a}`);
+    link(t, false);
+    tris[t] = null;
+    const other = n === undefined ? null : tris[n];
+    if (n === undefined || !other) continue; // open edge: nothing to repair, drop the cap
+    // The neighbour (b, a, d) is split at c into (b, c, d) and (c, a, d).
+    const j = other.indexOf(b);
+    const d = other[(j + 2) % 3];
+    link(n, false);
+    tris[n] = d === c ? null : [b, c, d];
+    link(n, true);
+    tris.push(d === c ? null : [c, a, d]);
+    link(tris.length - 1, true);
+    for (const u of [n, tris.length - 1]) {
+      const nt = tris[u];
+      if (nt && collinear(...nt)) queue.push(u);
+    }
+  }
+  const out: Array<[number, number, number]> = [];
+  for (const tri of tris) if (tri && !collinear(...tri)) out.push([rep[tri[0]], rep[tri[1]], rep[tri[2]]]);
   return out;
 }
 
@@ -113,17 +199,17 @@ export function nonDegenerateTriangles(p: ArrayLike<number>, indices: ArrayLike<
 export function toBinaryStl(input: Manifold | StlMesh, options: StlOptions = {}): ArrayBuffer {
   const { positions, indices } = meshArrays(input);
   const p = orientPositions(positions, options.orientation ?? 'faceUp');
-  const tris = nonDegenerateTriangles(p, indices);
+  const tris = stlTriangles(p, indices);
   const nTri = tris.length;
   const buffer = new ArrayBuffer(STL_HEADER_BYTES + 4 + STL_TRIANGLE_BYTES * nTri);
   const view = new DataView(buffer);
   writeHeader(view, options.header ?? DEFAULT_HEADER);
   view.setUint32(STL_HEADER_BYTES, nTri, true);
   let o = STL_HEADER_BYTES + 4;
-  for (const t of tris) {
-    const a = 3 * indices[3 * t];
-    const b = 3 * indices[3 * t + 1];
-    const c = 3 * indices[3 * t + 2];
+  for (const [va, vb, vc] of tris) {
+    const a = 3 * va;
+    const b = 3 * vb;
+    const c = 3 * vc;
     const ux = p[b] - p[a];
     const uy = p[b + 1] - p[a + 1];
     const uz = p[b + 2] - p[a + 2];

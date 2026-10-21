@@ -7,7 +7,8 @@ import { liveObjectCount } from '../src/geometry/kit';
 import { handleRequest } from '../src/worker/handler';
 import { layoutConfig } from './helpers/configs';
 import { getWasm } from './helpers/manifold';
-import { signedVolume } from './helpers/probes';
+import { manifoldOfMesh, signedVolume } from './helpers/probes';
+import { listStyles } from '../src/styles';
 
 let wasm: ManifoldToplevel;
 beforeAll(async () => {
@@ -114,6 +115,39 @@ describe('worker handler', () => {
     // the test-fit part follows the same rule
     const fit = ok({ id: 13, kind: 'testFit', config: { ...domed, print: { ...domed.print, orientation: 'style' } }, quality: 'preview' });
     expect(new TextDecoder().decode(new Uint8Array(fit.r.stl!, 0, 60))).toContain('faceUp');
+  });
+
+  it.each(listStyles().map((st) => st.id))('export of the combo preset (%s): the STL reads back as one valid piece of genus 2', (styleId) => {
+    const config = layoutConfig('ch-sd-1x1-combo', styleId);
+    const { r } = ok({ id: 20, kind: 'export', config, quality: 'export' });
+    // the style's default: stepped prints face up, the others face down
+    const header = new TextDecoder().decode(new Uint8Array(r.stl!, 0, 80));
+    expect(header).toContain(styleId === 'stepped' ? 'faceUp' : 'faceDown');
+    const both = (['faceDown', 'faceUp'] as const).map((orientation) => {
+      const stl = ok({ id: 21, kind: 'export', config: { ...config, print: { ...config.print, orientation } }, quality: 'export' }).r.stl!;
+      return manifoldOfMesh(wasm, parseBinaryStl(stl));
+    });
+    try {
+      const { outer, frontZ } = r.frame;
+      for (const back of both) {
+        expect(back.status()).toBe('NoError');
+        expect(back.genus()).toBe(2); // the socket opening + the bridge access hole
+        expect(back.decompose().length).toBe(1);
+        const box = back.boundingBox();
+        expect(box.min[2]).toBeCloseTo(0, 4);
+        expect(box.max[2]).toBeCloseTo(frontZ, 3);
+        // y is never flipped: the cover still reaches from the plate's bottom to above its top
+        expect(box.min[1]).toBeCloseTo(outer.cy - outer.h / 2, 1);
+        expect(box.max[1]).toBeCloseTo(outer.cy + outer.h / 2, 1);
+      }
+      // face down, the front is the bed layer at z = 0: the face-up export's top layer, not its skirt ring
+      const [down, up] = both;
+      const bed = down.slice(0.05).area();
+      expect(Math.abs(bed - up.slice(frontZ - 0.05).area()) / bed).toBeLessThan(0.02);
+      expect(bed).toBeGreaterThan(2 * up.slice(0.05).area());
+    } finally {
+      for (const m of both) m.delete();
+    }
   });
 
   it('testFit: small part with its own STL, base at z = 0', () => {

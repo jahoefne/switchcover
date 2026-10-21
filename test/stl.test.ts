@@ -79,6 +79,33 @@ describe('toBinaryStl format', () => {
     });
   });
 
+  it('repairs zero-area caps (three collinear corners) by splitting the neighbour instead of leaving a T-junction', () => {
+    withScope(() => {
+      // A closed cube soup in which one triangle (a, b, x) is split at the midpoint c of a → b and
+      // the cap (a, b, c) closes the T-junction: closed, but with a zero-area triangle.
+      const cube = wasm.Manifold.cube([10, 10, 10]).getMesh();
+      const pos = Array.from(cube.vertProperties);
+      const tri = Array.from(cube.triVerts);
+      const [a, b, x] = tri.slice(0, 3);
+      const c = pos.length / 3;
+      pos.push(...[0, 1, 2].map((k) => (pos[3 * a + k] + pos[3 * b + k]) / 2));
+      tri.splice(0, 3, a, c, x, c, b, x);
+      tri.push(a, b, c);
+      const mesh = { positions: pos, indices: tri };
+      const stl = toBinaryStl(mesh);
+      const back = parseBinaryStl(stl);
+      // the cap is gone, the triangle across its long edge (b → a) is split at c
+      expect(stlTriangleCount(stl)).toBe(tri.length / 3);
+      const m = manifoldOfMesh(wasm, back);
+      expect(m.status()).toBe('NoError');
+      expect(m.genus()).toBe(0);
+      expect(m.volume()).toBeCloseTo(1000, 6);
+      // dropping the cap (the former behaviour) would have left an open T-junction
+      const dropped = parseBinaryStl(toBinaryStl({ positions: pos, indices: tri.slice(0, -3) }));
+      expect(() => manifoldOfMesh(wasm, dropped)).toThrow();
+    });
+  });
+
   it('resolves the print orientation against the style default', () => {
     expect(resolvePrintOrientation('style', 'faceDown')).toBe('faceDown');
     expect(resolvePrintOrientation('style', 'faceUp')).toBe('faceUp');
