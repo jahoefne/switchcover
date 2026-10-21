@@ -1,0 +1,77 @@
+:root {
+  color-scheme: dark;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: #121317;
+  color: #e6e6e6;
+}
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+.app {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) 1fr;
+  height: 100%;
+}
+.panel {
+  padding: 16px;
+  overflow: auto;
+  border-right: 1px solid #2a2d35;
+}
+.panel h1 {
+  font-size: 1.25rem;
+  margin: 0 0 16px;
+}
+.panel label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.85rem;
+}
+.panel select {
+  font: inherit;
+  padding: 6px;
+}
+.panel dl {
+  font-size: 0.85rem;
+}
+.panel dt {
+  color: #9aa0aa;
+}
+.panel dd {
+  margin: 0 0 8px;
+}
+.warnings {
+  padding-left: 18px;
+  font-size: 0.8rem;
+}
+.warnings .warning,
+.warnings .error,
+.error {
+  color: #f0b45a;
+}
+.warnings .info {
+  color: #9aa0aa;
+}
+.note {
+  font-size: 0.75rem;
+  color: #7a808a;
+}
+.stage,
+.viewer {
+  position: relative;
+  height: 100%;
+  min-height: 300px;
+}
+.viewer canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+@media (max-width: 700px) {
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+}
