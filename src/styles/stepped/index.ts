@@ -5,7 +5,7 @@
  * Body = union of one hull (straight prism) per tier: tier i is the outline inset by
  * i·stepInset, rising to frontZ − (tiers−1−i)·stepH. Tier i > 0 starts just below the top of
  * tier i−1 (no coplanar faces in the union). The lower tiers' treads sit below the straight
- * cavity prism's ceiling, so `decorate().add` returns the shell fill (common/profile.ts).
+ * cavity prism's ceiling, so `decorate().add` returns the shell fill (geometry/kit `shellFill`).
  *
  * Finger notches may sit in the tier zone (allowsNotchInEdge): a notch that crosses a tier's
  * edge simply bites into that step; one that ends inside a tier's edge by less than minWall would
@@ -15,10 +15,9 @@
 import type { CrossSection, Manifold } from 'manifold-3d';
 import { z } from 'zod';
 import type { CoverFrame, CoverStyle, EdgeProfile, Placed, ResolvedFeature, StyleCtx, Vec3 } from '../../geometry/contract';
-import { OVERSHOOT } from '../../geometry/kit/kit';
-import { containmentMargin, offsetPlaced, outwardDirection, shapeCore } from '../../geometry/shape2d';
-import { availableEdgeRoom, bodyPlaced, edgeWidth, insideDistance, type EdgeWants } from '../common/frame';
-import { NO_WALLS, shellFill, type Walls } from '../common/profile';
+import { NO_WALLS, OVERSHOOT, shellFill, type Walls } from '../../geometry/kit';
+import { containmentMargin, insideDistance, offsetPlaced, outwardDirection, shapeCore } from '../../geometry/shape2d';
+import { availableEdgeRoom, bodyPlaced, edgeWidth, type EdgeWants } from '../common/frame';
 
 const TIERS_MIN = 2;
 const TIERS_MAX = 3;

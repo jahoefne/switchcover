@@ -9,12 +9,11 @@ import { listPresets, presetConfig } from '../src/config/presets';
 import type { CoverConfig } from '../src/config/schema';
 import { buildCover } from '../src/geometry/buildCover';
 import type { CoverFrame, EdgeProfile, Kit, Placed, StyleCtx } from '../src/geometry/contract';
-import { OVERSHOOT, liveObjectCount, withScope } from '../src/geometry/kit';
-import { offsetPlaced, outlineWorld, placedDistance } from '../src/geometry/shape2d';
+import { OVERSHOOT, liveObjectCount, withScope, type Walls } from '../src/geometry/kit';
+import { insideDistance, offsetPlaced, outlineWorld, placedDistance } from '../src/geometry/shape2d';
 import { outerPlaced, resolveLayout } from '../src/layout/resolve';
 import { getStyle, listStyles, stylePrintOrientation, type AnyCoverStyle } from '../src/styles';
-import { availableEdgeRoom, bodyPlaced, edgeWidth, insideDistance, type EdgeWants } from '../src/styles/common/frame';
-import { offsetProfile, type Walls } from '../src/styles/common/profile';
+import { availableEdgeRoom, bodyPlaced, edgeWidth, type EdgeWants } from '../src/styles/common/frame';
 import { domeEnvelope } from '../src/styles/organic/dome';
 import { bevelInset, facetedBody, facetedFullEdges } from '../src/styles/faceted';
 import { filletInset, organicBody, organicFullEdges, type OrganicParams } from '../src/styles/organic';
@@ -171,24 +170,6 @@ describe('common helpers', () => {
     expect(insideDistance(rr, [16 + 5 / Math.SQRT2, 7 + 5 / Math.SQRT2])).toBeCloseTo(0, 9);
     expect(insideDistance(rr, [1, 15])).toBeCloseTo(-3, 9);
     expect(insideDistance(circle(10, 3, 0), [3, 0])).toBeCloseTo(5, 9);
-  });
-
-  it('offsetProfile: identity without walls, exact offsets of a box and a 45° bevel', () => {
-    expect(offsetProfile([[0, 0], [0, 10]], { side: 0, top: 0 }, 0)).toEqual([
-      [0, 0],
-      [0, 10],
-    ]);
-    const box = offsetProfile([[0, 0], [0, 10]], { side: 2, top: 3 }, -0.1);
-    expect(box).toHaveLength(2);
-    expect(box[0][0]).toBeCloseTo(2, 9);
-    expect(box[0][1]).toBeCloseTo(-0.1, 9);
-    expect(box[1][0]).toBeCloseTo(2, 9);
-    expect(box[1][1]).toBeCloseTo(7, 9);
-    // 45° bevel 5 mm wide from z = 5 to the face at 10; walls 2/2 → bevel offset by 2 along its normal.
-    const bev = offsetProfile([[0, 0], [0, 5], [5, 10]], { side: 2, top: 2 }, 0);
-    const top = bev[bev.length - 1];
-    expect(top[1]).toBeCloseTo(8, 9);
-    expect(top[0]).toBeCloseTo(3 + 2 * Math.SQRT2, 9); // line z = d + 5 − 2√2 meets z = 8
   });
 
   it('domeEnvelope is concave, ≥ (1−u²)(1−v²), equal to it near the middle, 0 on the boundary', () => {

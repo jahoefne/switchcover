@@ -1,23 +1,27 @@
 /**
- * Edge profiles and shell repair shared by the organic, faceted and stepped styles.
+ * Profile bodies and shell repair for styles whose outer surface is not a straight prism
+ * (organic fillet, faceted bevel, stepped tiers).
  *
  * A style body is a hull of rings (`kit.ring(outline, d, z)`) at the vertices of a convex
  * PROFILE in (d, z): d = inset from the outline (0 = side wall, growing inward), z = height.
  * `offsetProfile` offsets that profile inward by wall thicknesses, which gives the body's
- * ideal inner surface (and, with tiny walls, a slightly shrunk body).
+ * ideal inner surface (and, with tiny walls, a slightly shrunk body); `profileRings` turns the
+ * vertices into hull points.
  *
- * Why the styles need `shellFill`: the plan's cavity is a straight prism (frame outline inset
+ * Why styles need `shellFill`: the builder's cavity is a straight prism (frame outline inset
  * by skirtT, up to frontZ − skinT). Under a fillet, bevel or tier that prism comes closer to
  * the outer surface than the walls allow, or breaks through it (e.g. a 45° × 7 mm bevel cuts
  * 1.1 mm into the cavity; an 8 mm fillet leaves a 0.5 mm wall). `shellFill` returns the
  * material the prism removed there; styles hand it to the builder as `decorate().add`, which
  * is unioned after the cavity is subtracted.
+ *
+ * `plateClearZ` / `plateZone` describe the space the fill (and anything else inside the cavity)
+ * must leave free over the plate.
  */
 import type { Manifold } from 'manifold-3d';
-import type { CoverFrame, Kit, Placed, Vec2, Vec3 } from '../../geometry/contract';
-import { OVERSHOOT } from '../../geometry/kit/kit';
 import { outerPlaced } from '../../layout/resolve';
-import { plateClearZ, plateZone } from './frame';
+import type { CoverFrame, Kit, Placed, Vec2, Vec3 } from '../contract';
+import { OVERSHOOT } from './kit';
 
 export interface Walls {
   /** Thickness behind a vertical face. */
@@ -97,6 +101,28 @@ export function profileRings(kit: Kit, outline: Placed, verts: Vec2[]): Vec3[] {
   const pts: Vec3[] = [];
   for (const [d, z] of verts) pts.push(...kit.ring(outline, d, z));
   return pts;
+}
+
+/**
+ * Top of the space the cover must leave free over the plate: the plate + clearance, and the
+ * rocker gap below every pocket floor (floorZ − floorT = plate depth + rockerGap for the
+ * deepest pocket; see the resolver's height chain).
+ */
+export function plateClearZ(frame: CoverFrame): number {
+  let z = frame.plate.protrusion + frame.plate.clearance;
+  for (const f of frame.features) if (f.kind === 'pocket') z = Math.max(z, f.floorZ - frame.floorT);
+  return z;
+}
+
+/** The plate grown by its clearance (in plan; see plateClearZ for its height), centred on the origin. */
+export function plateZone(plate: CoverFrame['plate']): Placed {
+  const c = plate.clearance;
+  return {
+    shape: { kind: 'roundedRect', w: plate.w + 2 * c, h: plate.h + 2 * c, r: plate.cornerR + c },
+    x: 0,
+    y: 0,
+    rotDeg: 0,
+  };
 }
 
 /** Builds the style body offset inward by `walls` (NO_WALLS = the outer body). */

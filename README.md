@@ -174,8 +174,9 @@ more than 51 mm, raise the strip length (the test-fit part shows it).
    - `openingEdge` / `pocketEdge`: return an `EdgeProfile` (data); the features build the
      cutting tools with `kit.edgeTool`. `availableEdgeRoom` in `src/styles/common/frame.ts`
      shrinks them safely when features were placed by hand closer than the allowances.
-   - `decorate` (optional): extra material / cuts; `src/styles/common/profile.ts` has the
-     shell fill that restores wall thickness under bevels, fillets and tiers.
+   - `decorate` (optional): extra material / cuts; the geometry kit (`src/geometry/kit`) has
+     `offsetProfile` / `profileRings` for bodies hulled from a (d, z) profile and `shellFill`,
+     which restores wall thickness under bevels, fillets and tiers.
    - `printOrientation` ('faceDown' | 'faceUp', or a function of the params when it depends on
      them, like organic's dome) and `printHint`.
 2. Import it in `src/styles/index.ts` and add it to `STYLES` (default first, plain box last).

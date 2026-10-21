@@ -4,16 +4,15 @@
  *
  * Body = hull of three rings: base (inset 0), bevel foot (inset 0, z = frontZ − bevelW·tan A)
  * and plateau edge (inset bevelW, z = frontZ). The bevel would cut into the straight cavity
- * prism, so `decorate().add` returns the shell fill (common/profile.ts); the groove is
+ * prism, so `decorate().add` returns the shell fill (geometry/kit `shellFill`); the groove is
  * `decorate().subtract`.
  */
 import type { Manifold } from 'manifold-3d';
 import { z } from 'zod';
 import type { CoverFrame, CoverStyle, EdgeProfile, Placed, StyleCtx, Vec2 } from '../../geometry/contract';
-import { OVERSHOOT } from '../../geometry/kit/kit';
+import { NO_WALLS, OVERSHOOT, offsetProfile, profileRings, shellFill, type Walls } from '../../geometry/kit';
 import { offsetPlaced } from '../../geometry/shape2d';
 import { availableEdgeRoom, bodyPlaced, type EdgeWants } from '../common/frame';
-import { NO_WALLS, offsetProfile, profileRings, shellFill, type Walls } from '../common/profile';
 
 const DEG = Math.PI / 180;
 /** The groove starts this far inside the plateau edge (mm). */

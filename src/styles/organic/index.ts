@@ -4,15 +4,14 @@
  *
  * Body = hull of rings along the fillet's circular profile (+ dome points). The fillet would
  * thin the shell over the straight cavity prism, so `decorate().add` returns the shell fill
- * (common/profile.ts).
+ * (geometry/kit `shellFill`).
  */
 import type { Manifold } from 'manifold-3d';
 import { z } from 'zod';
 import type { CoverFrame, CoverStyle, EdgeProfile, Placed, StyleCtx, Vec2 } from '../../geometry/contract';
-import { OVERSHOOT } from '../../geometry/kit/kit';
-import { offsetPlaced } from '../../geometry/shape2d';
-import { availableEdgeRoom, bodyPlaced, edgeWidth, insideDistance, type EdgeWants } from '../common/frame';
-import { NO_WALLS, offsetProfile, profileRings, shellFill, type Walls } from '../common/profile';
+import { NO_WALLS, OVERSHOOT, offsetProfile, profileRings, shellFill, type Walls } from '../../geometry/kit';
+import { insideDistance, offsetPlaced } from '../../geometry/shape2d';
+import { availableEdgeRoom, bodyPlaced, edgeWidth, type EdgeWants } from '../common/frame';
 import { domeHeight, domePoints } from './dome';
 
 const EDGE_R_MAX = 14;
