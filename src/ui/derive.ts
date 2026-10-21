@@ -6,7 +6,7 @@ import { BILRESA_VARIANTS, OUTLET_CH, OUTLET_DE } from '../config/defaults';
 import type { CoverConfig, OpeningSpec } from '../config/schema';
 import type { CoverFrame, StyleLimits, Warning } from '../geometry/contract';
 import { resolveLayout } from '../layout/resolve';
-import { parseStyleParams, resolveStyle, type AnyCoverStyle } from '../styles';
+import { parseStyleParams, resolveStyle, stylePrintOrientation, type AnyCoverStyle } from '../styles';
 
 export interface Derived {
   style: AnyCoverStyle;
@@ -29,7 +29,7 @@ export function deriveFrame(config: CoverConfig): Derived {
     clearance: config.cover.clearance,
   };
   const limits = style.limits(params, plate);
-  const resolved = resolveLayout(config, { limits });
+  const resolved = resolveLayout(config, { limits, allowsNotchInEdge: style.allowsNotchInEdge });
   return {
     style,
     params,
@@ -55,8 +55,9 @@ export function heightSummary(frame: CoverFrame): HeightSummary {
   return { frontZ: frame.frontZ, total, proud: Math.max(0, total - frame.frontZ) };
 }
 
-export function effectiveOrientation(config: CoverConfig, style: AnyCoverStyle): 'faceDown' | 'faceUp' {
-  return config.print.orientation === 'style' ? style.printOrientation : config.print.orientation;
+/** The orientation an export would use: config.print.orientation, 'style' → the style's default for `params`. */
+export function effectiveOrientation(config: CoverConfig, style: AnyCoverStyle, params: Record<string, unknown>): 'faceDown' | 'faceUp' {
+  return config.print.orientation === 'style' ? stylePrintOrientation(style, params) : config.print.orientation;
 }
 
 const slug = (s: string) =>

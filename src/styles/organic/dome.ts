@@ -19,7 +19,7 @@
  * off), i.e. surfaceZ errs on the high side there, which is the safe side for cutting tools.
  */
 import type { Placed, Vec3 } from '../../geometry/contract';
-import { insideDistance } from '../common/frame';
+import { insideDistance } from '../../geometry/shape2d';
 
 /** Normalised dome height in [0, 1] at (u, v) ∈ [−1, 1]² (0 on and outside the boundary). */
 export function domeEnvelope(u: number, v: number): number {

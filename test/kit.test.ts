@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { EdgeProfile, Kit, Placed } from '../src/geometry/contract';
-import { createKit, liveObjectCount, OVERSHOOT, withScope } from '../src/geometry/kit';
+import { createKit, liveObjectCount, offsetProfile, OVERSHOOT, withScope } from '../src/geometry/kit';
 import { expectSolid, getKit, getWasm } from './helpers/manifold';
 
 let kit: Kit;
@@ -278,5 +278,25 @@ describe('scope', () => {
       return null;
     });
     expect(liveObjectCount()).toBe(before);
+  });
+});
+
+describe('profile helpers', () => {
+  it('offsetProfile: identity without walls, exact offsets of a box and a 45° bevel', () => {
+    expect(offsetProfile([[0, 0], [0, 10]], { side: 0, top: 0 }, 0)).toEqual([
+      [0, 0],
+      [0, 10],
+    ]);
+    const box = offsetProfile([[0, 0], [0, 10]], { side: 2, top: 3 }, -0.1);
+    expect(box).toHaveLength(2);
+    expect(box[0][0]).toBeCloseTo(2, 9);
+    expect(box[0][1]).toBeCloseTo(-0.1, 9);
+    expect(box[1][0]).toBeCloseTo(2, 9);
+    expect(box[1][1]).toBeCloseTo(7, 9);
+    // 45° bevel 5 mm wide from z = 5 to the face at 10; walls 2/2 → bevel offset by 2 along its normal.
+    const bev = offsetProfile([[0, 0], [0, 5], [5, 10]], { side: 2, top: 2 }, 0);
+    const top = bev[bev.length - 1];
+    expect(top[1]).toBeCloseTo(8, 9);
+    expect(top[0]).toBeCloseTo(3 + 2 * Math.SQRT2, 9); // line z = d + 5 − 2√2 meets z = 8
   });
 });

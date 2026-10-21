@@ -5,15 +5,19 @@
  * Body = union of one hull (straight prism) per tier: tier i is the outline inset by
  * i·stepInset, rising to frontZ − (tiers−1−i)·stepH. Tier i > 0 starts just below the top of
  * tier i−1 (no coplanar faces in the union). The lower tiers' treads sit below the straight
- * cavity prism's ceiling, so `decorate().add` returns the shell fill (common/profile.ts).
+ * cavity prism's ceiling, so `decorate().add` returns the shell fill (geometry/kit `shellFill`).
+ *
+ * Finger notches may sit in the tier zone (allowsNotchInEdge): a notch that crosses a tier's
+ * edge simply bites into that step; one that ends inside a tier's edge by less than minWall would
+ * leave a fin of tier wall between the notch and the step, so `decorate().subtract` opens the
+ * notch into the step there (`notchBreakouts`).
  */
-import type { Manifold } from 'manifold-3d';
+import type { CrossSection, Manifold } from 'manifold-3d';
 import { z } from 'zod';
-import type { CoverFrame, CoverStyle, EdgeProfile, Placed, StyleCtx } from '../../geometry/contract';
-import { OVERSHOOT } from '../../geometry/kit/kit';
-import { offsetPlaced } from '../../geometry/shape2d';
-import { availableEdgeRoom, bodyPlaced, insideDistance, type EdgeWants } from '../common/frame';
-import { NO_WALLS, shellFill, type Walls } from '../common/profile';
+import type { CoverFrame, CoverStyle, EdgeProfile, Placed, ResolvedFeature, StyleCtx, Vec3 } from '../../geometry/contract';
+import { NO_WALLS, OVERSHOOT, shellFill, type Walls } from '../../geometry/kit';
+import { containmentMargin, insideDistance, offsetPlaced, outwardDirection, shapeCore } from '../../geometry/shape2d';
+import { availableEdgeRoom, bodyPlaced, edgeWidth, type EdgeWants } from '../common/frame';
 
 const TIERS_MIN = 2;
 const TIERS_MAX = 3;
@@ -97,6 +101,68 @@ export function steppedBody({ frame, params: p, kit }: Ctx, walls: Walls): Manif
   return parts.length === 1 ? parts[0] : kit.wasm.Manifold.union(parts);
 }
 
+/** Pocket rim chamfer, shrunk to the room there is (a safety net for hand-placed layouts). */
+function pocketEdgeOf({ frame, params: p }: Ctx, f: ResolvedFeature): EdgeProfile {
+  return { kind: 'chamfer', size: Math.min(POCKET_CHAMFER, availableEdgeRoom(frame, f, shapeOf(frame, p).plateau, WANTS)) };
+}
+
+/** Slots shorter than this (mm) are not worth a tool. */
+const MIN_SLOT = 0.3;
+
+/**
+ * Finger notches that end inside an upper tier's edge by less than minWall (see the file header):
+ * the fin of tier wall between the notch and the step is cut away, so the notch opens into the
+ * step. The slot is the strip of the notch's width running from its centre outward, clipped to
+ * the notch's backing footprint (notch + minWall) and to the tier, from the tread below up
+ * through the tier's top, with the notch's rim chamfer continued along its whole boundary. Clipped
+ * like that it only removes wall thinner than ≈ minWall, its floor rests on the backing and the
+ * tread beyond the step stays untouched. It is cut only where the tread below is at or above the
+ * cavity ceiling (the solid skin), so it can never meet the hollow; deeper fins (tall steps,
+ * three tiers) are left standing. A notch that crosses the edge bites into the step by itself.
+ * Exported for tests.
+ */
+export function notchBreakouts(c: Ctx, s: Shape = shapeOf(c.frame, c.params)): Manifold[] {
+  const { frame, kit } = c;
+  const ceiling = frame.frontZ - frame.skinT;
+  const tools: Manifold[] = [];
+  for (const f of frame.features) {
+    if (f.kind !== 'pocket' || !f.notch) continue;
+    const R = shapeCore(f.notch.shape).r;
+    if (!(R > 0)) continue;
+    const chamfer = edgeWidth(pocketEdgeOf(c, f));
+    const backing = offsetPlaced(f.notch, frame.minWall);
+    for (let i = 1; i < s.tiers.length; i++) {
+      const tier = offsetPlaced(s.body, -s.tiers[i].inset);
+      const m = containmentMargin(f.notch, tier);
+      if (!(m > 1e-6 && m < frame.minWall - 1e-6)) continue;
+      const zTop = s.tiers[i].top;
+      const zBottom = s.tiers[i - 1].top;
+      if (zBottom < ceiling - 1e-6 || !(zTop - zBottom > MIN_SLOT)) continue;
+      const [ux, uy] = outwardDirection(tier, [f.notch.x, f.notch.y]);
+      const reach = 2 * R + frame.minWall; // past the step; the clips bound it
+      const strip: Placed = {
+        shape: { kind: 'roundedRect', w: 2 * R, h: reach, r: 0 },
+        x: f.notch.x + (ux * reach) / 2,
+        y: f.notch.y + (uy * reach) / 2,
+        rotDeg: (Math.atan2(uy, ux) * 180) / Math.PI - 90,
+      };
+      const region = kit.cross(strip).intersect(kit.cross(backing)).intersect(kit.cross(tier));
+      if (region.isEmpty()) continue;
+      const ring = (cs: CrossSection, z: number): Vec3[] => cs.toPolygons().flat().map(([x, y]) => [x, y, z]);
+      const cz = Math.min(chamfer, zTop - zBottom - MIN_SLOT);
+      const pts = ring(region, zBottom);
+      if (cz > 1e-6) {
+        pts.push(...ring(region, zTop - cz));
+        pts.push(...ring(region.offset(cz + OVERSHOOT, 'Round', 2, kit.segments(cz + OVERSHOOT)), zTop + OVERSHOOT));
+      } else {
+        pts.push(...ring(region, zTop + OVERSHOOT));
+      }
+      tools.push(kit.hull(pts)); // the region is convex (rectangle ∩ disc ∩ rounded rect)
+    }
+  }
+  return tools;
+}
+
 export const steppedStyle: CoverStyle<typeof params> = {
   id: 'stepped',
   version: 1,
@@ -113,8 +179,11 @@ export const steppedStyle: CoverStyle<typeof params> = {
   printOrientation: 'faceUp',
   printHint:
     'Print face up: face down, every tier above the first would start in mid-air. The pockets then open upwards and need no supports; support the cavity ceiling from the build plate (tree supports work well).',
+  // A finger notch may open into the step (see notchBreakouts) instead of growing the cover.
+  allowsNotchInEdge: true,
   limits: (p) => ({
-    // Features stay on the top tier with a 2 mm flat margin.
+    // Pockets and openings stay on the top tier with a 2 mm flat margin (finger notches may
+    // enter the tier zone: allowsNotchInEdge).
     minFrame: (p.tiers - 1) * p.stepInset + TOP_MARGIN,
     minFrontZ: p.tiers * p.stepH + BASE_RESERVE,
     // Edges are square steps, not rounded.
@@ -137,7 +206,9 @@ export const steppedStyle: CoverStyle<typeof params> = {
   decorate: (c) => {
     const s = shapeOf(c.frame, c.params);
     const add = shellFill(c.kit, c.frame, (w) => steppedBody(c, w), s.tiers[0].top - c.frame.skinT - 1);
-    return add ? { add } : {};
+    const slots = notchBreakouts(c, s);
+    const subtract = slots.length === 0 ? undefined : slots.length === 1 ? slots[0] : c.kit.wasm.Manifold.union(slots);
+    return { ...(add ? { add } : {}), ...(subtract ? { subtract } : {}) };
   },
   // Shrink to fit is a safety net (dx/dy, manual layouts): the resolver leaves room for full size.
   openingEdge: ({ frame, params: p }, f): EdgeProfile => ({
@@ -145,8 +216,5 @@ export const steppedStyle: CoverStyle<typeof params> = {
     inset: Math.min(OPENING_STEP.inset, availableEdgeRoom(frame, f, shapeOf(frame, p).plateau, WANTS)),
     depth: OPENING_STEP.depth,
   }),
-  pocketEdge: ({ frame, params: p }, f): EdgeProfile => ({
-    kind: 'chamfer',
-    size: Math.min(POCKET_CHAMFER, availableEdgeRoom(frame, f, shapeOf(frame, p).plateau, WANTS)),
-  }),
+  pocketEdge: pocketEdgeOf,
 };

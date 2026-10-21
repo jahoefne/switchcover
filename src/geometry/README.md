@@ -49,7 +49,7 @@ cover  = shell − union(cuts + style.decorate().subtract)
 | pocketVoid | cut | nested: loft of pocket inset by `backFilletInset(r, h)`, [floorZ, floorZ + r] (12 arc segments); then pocket, [floorZ + r − 0.1, face], rim = `style.pocketEdge` (default chamfer 0.6) |
 | stripIndent | cut | strip, [floorZ − stripDepth, floorZ + 0.1] |
 | accessHoles | cut | the bridge hole, [min(floor underside, cavity ceiling) − 0.1, floorZ + holeExitHeight + 0.1] (through the floor and the foot of the fillet wall) |
-| notch | add + cut | backing (circle + minWall) from notchFloor − minWall up, bridged to the skirt when 0 … minWall short of it; void [floorZ + 2, face] with the pocket rim edge |
+| notch | add + cut | backing (circle + minWall) from notchFloor − minWall up, bridged to the skirt when 0 … minWall short of it; void [floorZ + 2, face] with the pocket rim edge. Styles with `allowsNotchInEdge` get the notch only minWall + allowance inside the outline (it may cut into their bevel / fillet / tier step; stepped opens it into the step with `notchBreakouts`) |
 | opening | cut | outlet: `style.openingEdge`, passthrough: chamfer 0.6; [cavity ceiling − 0.1, face] + plain through-prism |
 
 - Adds (wells) are carved out of the cavity instead of unioned onto the body, so they can
@@ -98,7 +98,8 @@ when the resolver reports `feature-overlap` (merged cuts merge holes; already re
   terminate + respawn (`worker/client.ts`).
 - Downloads rebuild at export quality — never export the preview mesh. `export` /
   `testFit` responses carry the binary STL in `config.print.orientation` (`'style'` →
-  `style.printOrientation`).
+  `style.printOrientation`, a constant or a function of the parsed params:
+  `stylePrintOrientation(style, params)` in src/styles).
 - Copy `getMesh()` buffers into fresh typed arrays and transfer them.
 
 ## WASM init

@@ -6,6 +6,9 @@
  *  - `availableEdgeRoom`: how wide an opening/pocket edge treatment may be at the face before it
  *    eats into a neighbouring feature's wall or leaves the flat part of the face.
  *
+ * Profile bodies, the shell fill and the plate zone live in the geometry kit
+ * (src/geometry/kit/profile.ts); exact 2D distances in src/geometry/shape2d.ts.
+ *
  * Corner radius: a style asks for its outer corner radius through `limits().cornerR`; the
  * resolver sets frame.outer.cornerR to it (≥ plate corner + clearance + skirtT) and grows the
  * frame just enough for the plate to fit the cavity's rounded corner. The body radius is still
@@ -28,30 +31,6 @@ export function bodyPlaced(frame: CoverFrame, cornerR: number): Placed {
   const r = Math.max(0, Math.min(cornerR, frame.outer.cornerR, Math.min(w, h) / 2));
   return { shape: { kind: 'roundedRect', w, h, r }, x: cx, y: cy, rotDeg: 0 };
 }
-
-/**
- * Top of the space the cover must leave free over the plate: the plate + clearance, and the
- * rocker gap below every pocket floor (floorZ − floorT = plate depth + rockerGap for the
- * deepest pocket; see the resolver's height chain).
- */
-export function plateClearZ(frame: CoverFrame): number {
-  let z = frame.plate.protrusion + frame.plate.clearance;
-  for (const f of frame.features) if (f.kind === 'pocket') z = Math.max(z, f.floorZ - frame.floorT);
-  return z;
-}
-
-/** The plate grown by its clearance (in plan; see plateClearZ for its height), centred on the origin. */
-export function plateZone(plate: CoverFrame['plate']): Placed {
-  const c = plate.clearance;
-  return {
-    shape: { kind: 'roundedRect', w: plate.w + 2 * c, h: plate.h + 2 * c, r: plate.cornerR + c },
-    x: 0,
-    y: 0,
-    rotDeg: 0,
-  };
-}
-
-export { insideDistance };
 
 /** How far an edge profile widens a cut at the face (mm, before any depth clamping). */
 export function edgeWidth(e: EdgeProfile): number {

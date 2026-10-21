@@ -53,10 +53,20 @@
  *  - SEMANTIC CHANGE: a pocket's `holes` is now 0 or 1 "bridge" hole under the strip (previously
  *    up to two slots beside it); `notch` is cut from floorZ + NOTCH_FLOOR_LIFT (config/defaults),
  *    not from floorZ. Each hole is still exactly one through-hole for the genus rule.
+ *
+ * Polish (additive):
+ *  - `CoverStyle.allowsNotchInEdge`: the style lets finger notches sit in its edge zone (bevel,
+ *    fillet, tier step); the resolver then keeps only minWall + the pocket edge allowance between
+ *    a notch and the outer outline instead of max(minWall, minFrame) + allowance.
+ *  - `CoverStyle.printOrientation` may be a function of the params (organic: face up once the
+ *    face is domed); `stylePrintOrientation` (src/styles) resolves either form.
  */
 import type { z } from 'zod';
 import type { CrossSection, Manifold, ManifoldToplevel } from 'manifold-3d';
 import type { CoverConfig } from '../config/schema';
+import type { PrintOrientation } from './export/stl';
+
+export type { PrintOrientation };
 
 // ---------------------------------------------------------------------------
 // Basic vectors (tuples, so they can be handed to manifold-3d unchanged)
@@ -312,6 +322,13 @@ export interface BooleanParamUi {
 export type StyleParamUi = NumberParamUi | BooleanParamUi;
 
 /**
+ * The function form of `CoverStyle.printOrientation`. Declared through a method signature so it
+ * is bivariant in `P` like the style's other methods: a concrete `CoverStyle<S>` stays assignable
+ * to `AnyCoverStyle` (params erased to a plain record) under strictFunctionTypes.
+ */
+export type PrintOrientationOf<P> = { bivarianceHack(params: P): PrintOrientation }['bivarianceHack'];
+
+/**
  * A cover style plugin. Register it in src/styles/index.ts.
  *
  * `S` is the zod schema of the style's params; `P` the parsed params type.
@@ -326,9 +343,24 @@ export interface CoverStyle<S extends z.ZodObject, P = z.infer<S>> {
   migrate?(old: unknown, from: number): unknown;
   /** Form metadata per param (labels, slider ranges, limit clamps); params without it get defaults. */
   ui?: Partial<Record<keyof P, StyleParamUi>>;
-  printOrientation: 'faceDown' | 'faceUp';
+  /**
+   * Default print orientation ('style' in config.print.orientation): a constant, or a function
+   * of the params when it depends on them (organic prints face up once the face is domed).
+   * Callers resolve it with `stylePrintOrientation(style, params)` (src/styles).
+   */
+  printOrientation: PrintOrientation | PrintOrientationOf<P>;
   printHint: string;
-  /** Clamps sliders and feeds resolveLayout(config, { limits }). */
+  /**
+   * Finger notches may sit in the style's edge zone (the bevel, fillet or tier step that
+   * `limits().minFrame` keeps other features away from). The resolver then keeps only minWall +
+   * `pocketEdgeAllowance` between a notch and the outer outline — enough for the notch's backing
+   * (notch + minWall, merged into the skirt when it comes within minWall of it) and its rim edge —
+   * so a notch alone never grows the cover beyond what the plate and the pockets need. The style
+   * must cope with the notch cutting into its edge (features/pocket.ts cuts it like any other
+   * notch). Default: false (notches keep minFrame like pockets and openings).
+   */
+  allowsNotchInEdge?: boolean;
+  /** Clamps sliders and feeds resolveLayout(config, { limits, allowsNotchInEdge }). */
   limits(p: P, plate: CoverFrame['plate']): StyleLimits;
   /** Local face height (dome); pockets/flares are placed relative to it. */
   surfaceZ(c: StyleCtx<P>, x: number, y: number): number;

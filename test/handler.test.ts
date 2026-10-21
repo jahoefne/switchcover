@@ -85,6 +85,37 @@ describe('worker handler', () => {
     expect(v[2]).toBeCloseTo(r.positions[3 * i0 + 2], 4);
   });
 
+  it("export resolves a style's orientation from its params: organic flat → face down, domed → face up", () => {
+    const flat = layoutConfig('ch-sd-1x1', 'organic');
+    const domed = layoutConfig('ch-sd-1x1', 'organic');
+    domed.cover.styleParams = { domeSag: 3 };
+    const check = (config: typeof flat, id: number, expected: 'faceDown' | 'faceUp') => {
+      const { r } = ok({ id, kind: 'export', config, quality: 'preview' });
+      const i0 = r.indices[0];
+      const [x, , z] = firstStlVertex(r.stl!);
+      let maxZ = -Infinity;
+      for (let i = 2; i < r.positions.length; i += 3) maxZ = Math.max(maxZ, r.positions[i]);
+      if (expected === 'faceDown') {
+        expect(x).toBeCloseTo(-r.positions[3 * i0], 3);
+        expect(z).toBeCloseTo(maxZ - r.positions[3 * i0 + 2], 3);
+      } else {
+        expect(x).toBeCloseTo(r.positions[3 * i0], 3);
+        expect(z).toBeCloseTo(r.positions[3 * i0 + 2], 3);
+      }
+      expect(new TextDecoder().decode(new Uint8Array(r.stl!, 0, 60))).toContain(expected);
+      return maxZ;
+    };
+    const flatTop = check(flat, 10, 'faceDown');
+    const domedTop = check(domed, 11, 'faceUp');
+    expect(domedTop).toBeGreaterThan(flatTop + 1); // the dome rises around the pocket (which cuts its apex)
+    // an explicit orientation still wins
+    domed.print.orientation = 'faceDown';
+    check(domed, 12, 'faceDown');
+    // the test-fit part follows the same rule
+    const fit = ok({ id: 13, kind: 'testFit', config: { ...domed, print: { ...domed.print, orientation: 'style' } }, quality: 'preview' });
+    expect(new TextDecoder().decode(new Uint8Array(fit.r.stl!, 0, 60))).toContain('faceUp');
+  });
+
   it('testFit: small part with its own STL, base at z = 0', () => {
     const before = liveObjectCount();
     const { r, transfer } = ok({ id: 4, kind: 'testFit', config: presetConfig('ch-sd-1x1'), quality: 'export' });

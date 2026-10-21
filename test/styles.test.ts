@@ -9,12 +9,11 @@ import { listPresets, presetConfig } from '../src/config/presets';
 import type { CoverConfig } from '../src/config/schema';
 import { buildCover } from '../src/geometry/buildCover';
 import type { CoverFrame, EdgeProfile, Kit, Placed, StyleCtx } from '../src/geometry/contract';
-import { OVERSHOOT, liveObjectCount, withScope } from '../src/geometry/kit';
-import { offsetPlaced, outlineWorld, placedDistance } from '../src/geometry/shape2d';
+import { OVERSHOOT, liveObjectCount, withScope, type Walls } from '../src/geometry/kit';
+import { insideDistance, offsetPlaced, outlineWorld, placedDistance } from '../src/geometry/shape2d';
 import { outerPlaced, resolveLayout } from '../src/layout/resolve';
-import { getStyle, listStyles, type AnyCoverStyle } from '../src/styles';
-import { availableEdgeRoom, bodyPlaced, edgeWidth, insideDistance, type EdgeWants } from '../src/styles/common/frame';
-import { offsetProfile, type Walls } from '../src/styles/common/profile';
+import { getStyle, listStyles, stylePrintOrientation, type AnyCoverStyle } from '../src/styles';
+import { availableEdgeRoom, bodyPlaced, edgeWidth, type EdgeWants } from '../src/styles/common/frame';
 import { domeEnvelope } from '../src/styles/organic/dome';
 import { bevelInset, facetedBody, facetedFullEdges } from '../src/styles/faceted';
 import { filletInset, organicBody, organicFullEdges, type OrganicParams } from '../src/styles/organic';
@@ -117,7 +116,7 @@ function setup(spec: Spec, presetId: string, variant: Params) {
   const style = styleOf(spec.id);
   const cfg = presetConfig(presetId);
   const params = style.params.parse(variant) as Params;
-  const frame = resolveLayout(cfg, { limits: style.limits(params, plateOf(cfg)) });
+  const frame = resolveLayout(cfg, { limits: style.limits(params, plateOf(cfg)), allowsNotchInEdge: style.allowsNotchInEdge });
   return { style, cfg, params, frame, ctx: { frame, params, kit } as StyleCtx<Params> };
 }
 
@@ -173,24 +172,6 @@ describe('common helpers', () => {
     expect(insideDistance(circle(10, 3, 0), [3, 0])).toBeCloseTo(5, 9);
   });
 
-  it('offsetProfile: identity without walls, exact offsets of a box and a 45° bevel', () => {
-    expect(offsetProfile([[0, 0], [0, 10]], { side: 0, top: 0 }, 0)).toEqual([
-      [0, 0],
-      [0, 10],
-    ]);
-    const box = offsetProfile([[0, 0], [0, 10]], { side: 2, top: 3 }, -0.1);
-    expect(box).toHaveLength(2);
-    expect(box[0][0]).toBeCloseTo(2, 9);
-    expect(box[0][1]).toBeCloseTo(-0.1, 9);
-    expect(box[1][0]).toBeCloseTo(2, 9);
-    expect(box[1][1]).toBeCloseTo(7, 9);
-    // 45° bevel 5 mm wide from z = 5 to the face at 10; walls 2/2 → bevel offset by 2 along its normal.
-    const bev = offsetProfile([[0, 0], [0, 5], [5, 10]], { side: 2, top: 2 }, 0);
-    const top = bev[bev.length - 1];
-    expect(top[1]).toBeCloseTo(8, 9);
-    expect(top[0]).toBeCloseTo(3 + 2 * Math.SQRT2, 9); // line z = d + 5 − 2√2 meets z = 8
-  });
-
   it('domeEnvelope is concave, ≥ (1−u²)(1−v²), equal to it near the middle, 0 on the boundary', () => {
     const f = (u: number, v: number) => (1 - u * u) * (1 - v * v);
     let seed = 7;
@@ -220,7 +201,7 @@ describe.each(SPECS.map((s) => [s.id, s] as const))('%s style', (id, spec) => {
     expect(style.label.length).toBeGreaterThan(0);
     expect(style.description.length).toBeGreaterThan(20);
     expect(style.printHint.length).toBeGreaterThan(20);
-    expect(style.printOrientation).toBe(spec.orientation);
+    expect(stylePrintOrientation(style, spec.defaults)).toBe(spec.orientation);
     expect(style.params.parse({})).toEqual(spec.defaults);
     const keys = Object.keys(style.params.shape);
     expect(Object.keys(spec.defaults).sort()).toEqual([...keys].sort());
@@ -258,7 +239,7 @@ describe.each(SPECS.map((s) => [s.id, s] as const))('%s style', (id, spec) => {
       expect(lim.pocketEdgeAllowance).toBeCloseTo(edgeWidth(full.pocket), 9);
       expect(lim.cornerR).toBe(params.cornerR);
       expect(typeof lim.edgeInset).toBe('function');
-      const frame = resolveLayout(cfg, { limits: lim });
+      const frame = resolveLayout(cfg, { limits: lim, allowsNotchInEdge: style.allowsNotchInEdge });
       expect(frame.frontZ).toBeGreaterThanOrEqual(lim.minFrontZ - 1e-9);
       // the resolver's corner radius reaches the style's (body corners never cut the cavity)
       if (typeof params.cornerR === 'number') expect(frame.outer.cornerR).toBeGreaterThanOrEqual(params.cornerR - 1e-9);
@@ -338,8 +319,12 @@ describe.each(SPECS.map((s) => [s.id, s] as const))('%s style', (id, spec) => {
         const sb = dec.subtract.boundingBox();
         expect(sb.min[0]).toBeGreaterThan(cx - w / 2);
         expect(sb.max[0]).toBeLessThan(cx + w / 2);
-        expect(sb.min[2]).toBeGreaterThan(frame.frontZ - frame.skinT);
+        expect(sb.max[2]).toBeLessThanOrEqual(frame.frontZ + OVERSHOOT + 1e-6);
         expect(dec.subtract.intersect(body).volume()).toBeGreaterThan(0);
+        // a decoration cut (groove, notch breakout) never breaks into the hollow: it stays out of
+        // the body offset inward by the full walls
+        const hollowBody = spec.body(ctx, { side: frame.skirtT, top: frame.skinT });
+        expect(dec.subtract.intersect(hollowBody).volume()).toBeLessThan(1e-6);
       }
 
       // shell: body − stub cavity + fill keeps ≥ 0.9 × the nominal walls everywhere
@@ -439,6 +424,16 @@ describe('organic dome', () => {
     });
   });
 
+  it('prints face down with a flat face and face up as soon as the face is domed', () => {
+    const style = styleOf('organic');
+    expect(typeof style.printOrientation).toBe('function');
+    expect(stylePrintOrientation(style, style.params.parse({}) as Params)).toBe('faceDown');
+    expect(stylePrintOrientation(style, style.params.parse({ domeSag: 0.1 }) as Params)).toBe('faceUp');
+    expect(stylePrintOrientation(style, style.params.parse({ domeSag: 3 }) as Params)).toBe('faceUp');
+    // the static form stays valid for the other styles
+    for (const id of ['minimal', 'faceted', 'stepped', 'box']) expect(typeof styleOf(id).printOrientation).toBe('string');
+  });
+
   it('flat face without a dome; both sockets get the full flare (the pocket is spread for it)', () => {
     withScope(() => {
       const { style, frame, ctx } = setup(spec, 'ch-sd-1x3v-switch-two-sockets', {});
@@ -464,7 +459,7 @@ describe('organic dome', () => {
         [9.5, 'fillet', 1.25], // 4.5 mm apart: 1.25 each, too narrow for a flare
       ] as const) {
         cfg.modules[2].dy = dy; // the bottom socket moves up towards the middle one
-        const frame = resolveLayout(cfg, { limits: lim });
+        const frame = resolveLayout(cfg, { limits: lim, allowsNotchInEdge: style.allowsNotchInEdge });
         expect(frame.warnings.map((w) => w.code)).toContain('edge-reduced');
         const ctx = { frame, params, kit } as StyleCtx<Params>;
         const [upper, lower] = frame.features.filter((f) => f.kind === 'opening').sort((a, b) => b.placed.y - a.placed.y);
@@ -578,7 +573,7 @@ describe('timing (largest preset)', () => {
         cfg.cover.style = spec.id;
         for (const variant of spec.variants) {
           const params = style.params.parse(variant) as Params;
-          const frame = resolveLayout(cfg, { limits: style.limits(params, plateOf(cfg)) });
+          const frame = resolveLayout(cfg, { limits: style.limits(params, plateOf(cfg)), allowsNotchInEdge: style.allowsNotchInEdge });
           const ctx = { frame, params, kit: qk };
           const t0 = performance.now();
           const body = style.outerBody(ctx);

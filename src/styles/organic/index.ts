@@ -4,15 +4,14 @@
  *
  * Body = hull of rings along the fillet's circular profile (+ dome points). The fillet would
  * thin the shell over the straight cavity prism, so `decorate().add` returns the shell fill
- * (common/profile.ts).
+ * (geometry/kit `shellFill`).
  */
 import type { Manifold } from 'manifold-3d';
 import { z } from 'zod';
 import type { CoverFrame, CoverStyle, EdgeProfile, Placed, StyleCtx, Vec2 } from '../../geometry/contract';
-import { OVERSHOOT } from '../../geometry/kit/kit';
-import { offsetPlaced } from '../../geometry/shape2d';
-import { availableEdgeRoom, bodyPlaced, edgeWidth, insideDistance, type EdgeWants } from '../common/frame';
-import { NO_WALLS, offsetProfile, profileRings, shellFill, type Walls } from '../common/profile';
+import { NO_WALLS, OVERSHOOT, offsetProfile, profileRings, shellFill, type Walls } from '../../geometry/kit';
+import { insideDistance, offsetPlaced } from '../../geometry/shape2d';
+import { availableEdgeRoom, bodyPlaced, edgeWidth, type EdgeWants } from '../common/frame';
 import { domeHeight, domePoints } from './dome';
 
 const EDGE_R_MAX = 14;
@@ -132,14 +131,19 @@ export const organicStyle: CoverStyle<typeof params> = {
     domeSag: { label: 'Dome height', min: 0, max: DOME_SAG_MAX, step: 0.1, unit: 'mm' },
     flareR: { label: 'Socket flare', min: 0, max: 12, step: 0.5, unit: 'mm' },
   },
-  // Static in the contract: face-down suits the flat face (domeSag = 0); a dome needs face-up.
-  printOrientation: 'faceDown',
+  // Face down suits the flat face; a domed face (domeSag > 0) would rest on its apex, so it
+  // prints face up.
+  printOrientation: (p) => (p.domeSag > 0 ? 'faceUp' : 'faceDown'),
   printHint:
-    'Flat face (dome 0): print face down; add supports inside the pockets (their floors bridge) and, if your slicer flags it, under the first millimetres of the edge fillet. With a dome the face is curved: switch the print orientation to face up and support the cavity ceiling instead.',
+    'Flat face (dome 0): print face down; add supports inside the pockets (their floors bridge) and, if your slicer flags it, under the first millimetres of the edge fillet. With a dome the face is curved, so the default switches to face up: support the cavity ceiling instead.',
+  // A finger notch may reach into the fillet (a dimple in the pebble's rounded edge; with the
+  // default fillet its rim only touches the fillet's start) instead of growing the cover.
+  allowsNotchInEdge: true,
   limits: (p) => {
     const wants = wantsOf(p);
     return {
-      // Pockets/openings stay on the flat face, ≥ 1 mm inside the fillet.
+      // Pockets/openings stay on the flat face, ≥ 1 mm inside the fillet (finger notches may
+      // enter it: allowsNotchInEdge).
       minFrame: p.edgeR + 1,
       minFrontZ: p.edgeR + 2,
       // The fillet may not exceed the corner radius (the plateau keeps rounded corners).

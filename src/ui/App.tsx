@@ -120,13 +120,14 @@ function Main({ createClient }: { createClient: ClientFactory }) {
             <StylePanel config={config} style={style} params={params} limits={limits} update={update} />
           </Section>
           <Section id="advanced" title="Bilresa & print" summary={`pocket ${fmt(config.bilresa.pocketDepth)} mm`}>
-            <AdvancedPanel config={config} frame={frame} style={style} update={update} />
+            <AdvancedPanel config={config} frame={frame} style={style} params={params} update={update} />
           </Section>
           <Section id="export" title="Export" summary={`${fmt(frame.outer.w)} × ${fmt(frame.outer.h)} × ${fmt(frame.frontZ)} mm`} defaultOpen>
             <ExportPanel
               config={config}
               frame={frame}
               style={style}
+              params={params}
               stats={shown?.result.stats ?? null}
               statsStale={!current}
               warnings={warnings}

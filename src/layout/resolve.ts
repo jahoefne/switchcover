@@ -34,6 +34,12 @@
  *    backing (notch + minWall) always fits. (minWall + margin, as for pockets, would grow plate-
  *    sized covers for a small dimple.) A backing that ends 0 … minWall short of the skirt is
  *    merged into the skirt by features/pocket.ts — the cover does not grow for it.
+ *    Styles that allow notches in their edge zone (CoverStyle.allowsNotchInEdge: faceted,
+ *    stepped, organic) drop minFrame for the notch: minWall + allowance keeps the backing and the
+ *    rim edge inside the outline, and the notch's opening may cut into the bevel / fillet / tier
+ *    step. A Ø14 notch then fits the plate-driven size of every 1×1 preset with every style;
+ *    where a spread pocket's notch still sets the size (faceted switch + socket) the cover grows
+ *    by minWall + the rim allowance only.
  *
  * Access-hole policy (one "bridge" hole per pocket, in the pocket's own unrotated frame):
  *   a rounded rect (corner ACCESS_HOLE_CORNER_R) centred on the POCKET centre,
@@ -359,11 +365,19 @@ export function backingGap(outer: Outline, skirtT: number, backing: Placed): num
   return containmentMargin(backing, cav);
 }
 
+/** What the resolver needs to know about the style (see CoverStyle). */
+export interface ResolveStyle {
+  /** `style.limits(params, plate)`. */
+  limits: StyleLimits;
+  /** `style.allowsNotchInEdge`: finger notches ignore `limits.minFrame` (default false). */
+  allowsNotchInEdge?: boolean;
+}
+
 /**
  * Resolve a validated config into concrete geometry inputs.
- * @param style optional style limits (from `style.limits(params, plate)`).
+ * @param style optional style limits (from `style.limits(params, plate)`) and notch rule.
  */
-export function resolveLayout(config: CoverConfig, style?: { limits: StyleLimits }): CoverFrame {
+export function resolveLayout(config: CoverConfig, style?: ResolveStyle): CoverFrame {
   const { plate, grid, cover, bilresa, print } = config;
   const limits = style?.limits ?? DEFAULT_LIMITS;
   const warnings: Warning[] = [];
@@ -538,8 +552,10 @@ export function resolveLayout(config: CoverConfig, style?: { limits: StyleLimits
     const a = f.kind === 'pocket' ? allow.pocket : f.role === 'outlet' ? allow.opening : 0;
     [hw, hh] = growToContain(hw, hh, cornerR, offsetPlaced(f.placed, baseMargin + a));
   }
-  // Finger notches (see the file header): keep the notch and its rim edge off the style's edge.
-  const notchMargin = Math.max(cover.minWall, limits.minFrame) + allow.pocket;
+  // Finger notches (see the file header): keep the notch and its rim edge off the style's edge,
+  // or, when the style allows notches in its edge zone, just the backing and the rim inside.
+  const notchFrame = style?.allowsNotchInEdge ? cover.minWall : Math.max(cover.minWall, limits.minFrame);
+  const notchMargin = notchFrame + allow.pocket;
   for (const f of features) {
     if (f.kind === 'pocket' && f.notch) [hw, hh] = growToContain(hw, hh, cornerR, offsetPlaced(f.notch, notchMargin));
   }
