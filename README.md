@@ -14,16 +14,21 @@ Live: <https://jahoefne.github.io/switchcover/>
 
 ## What works
 
-- **Presets** for Swiss Feller STANDARDdue plates (1×1, 1×2 switch + socket, 2×1, 1×2 two
-  switches, 1×3 switch + two sockets, 3×1, 2×2), approximate DE/EU frames and a free
-  `custom` layout. Plate size, depth, corner radius and the module grid are editable.
+- **Presets** for Swiss Feller STANDARDdue plates (1×1, 1×1 switch + socket combo, 1×2 switch +
+  socket, 2×1, 1×2 two switches, 1×3 switch + two sockets, 3×1, 2×2), approximate DE/EU frames
+  and a free `custom` layout (see "Presets" below). Plate size, depth, corner radius and the
+  module grid (pitch, and under "Advanced" an offset of the whole grid) are editable.
 - **Modules**: click a grid cell to make it a Bilresa pocket (two-button or scroll wheel,
   rotation, dx/dy, own pocket depth, finger notch on/off), a socket opening (round, rounded
   rect or stadium, any size), a passthrough or blank. Pockets that would collide are spread
-  apart automatically (with a note), and every pocket gets a hidden access hole to the old
-  rocker underneath (see "Bilresa pocket and magnet strip").
+  apart automatically (with a note), never so far that the old rocker leaves the pocket's
+  access hole (the style's edges between them get narrower instead), and every pocket gets a
+  hidden access hole to the old rocker underneath (see "Bilresa pocket and magnet strip").
 - **Styles** (see below) with their own parameters; the cover size follows the plate, the
-  features and the style (or a manual size ≥ the automatic one).
+  features and the style (or a manual size ≥ the automatic one). Each side of the cover goes
+  only as far out as the plate or a feature needs, so a layout that needs room on one side only
+  gives an off-centre cover (the Export panel says where its centre sits); symmetric layouts
+  stay centred on the plate.
 - **Live 3D preview** (three.js) with translucent ghosts of the plate and the Bilresa, a
   checks list (warnings with the module they refer to), height and weight estimates.
 - **Download STL** (rebuilt at export quality, binary STL in the print orientation) and a
@@ -32,6 +37,38 @@ Live: <https://jahoefne.github.io/switchcover/>
   and the magnet strip with 10–20 g of filament before printing the whole cover.
 - **Share links**: the whole configuration lives in the URL hash (`#v2.…`; older `#v1.`
   links still open and are migrated).
+
+## Presets
+
+| Preset | Plate | Layout |
+|---|---|---|
+| `ch-sd-1x1` | 90 × 90 | one Bilresa |
+| `ch-sd-1x1-combo` | 90 × 90 | switch + Type 13 socket on one plate ("Kleinkombination"), Bilresa lying above the socket |
+| `ch-sd-1x2v-switch-socket` | 90 × 150 | Bilresa on top, Ø46 socket below |
+| `ch-sd-2x1h-two-switches` | 150 × 90 | two Bilresa side by side |
+| `ch-sd-1x2v-two-switches` | 90 × 150 | two Bilresa lying (rot 90), one above the other |
+| `ch-sd-1x3v-switch-two-sockets` | 90 × 210 | Bilresa, two sockets |
+| `ch-sd-3x1h-three-switches` | 210 × 90 | three Bilresa |
+| `ch-sd-2x2` | 150 × 150 | two Bilresa on top, two sockets below |
+| `de-1x1`, `de-1x2v`, `de-2x1h` | 81 × 81, 81 × 152, 152 × 81 | approximate DE/EU frames (71 mm pitch) |
+| `custom` | any | start from one Swiss module |
+
+**Switch + socket combo (`ch-sd-1x1-combo`).** Feller STANDARDdue with a switch and a Type 13
+socket on ONE 90 × 90 plate (measured): the switch key (≈ 60 × 22 mm) is centred 26 mm below the
+plate's top edge (y = +19 in plate coordinates), the socket recess 57 mm below it (y = −12). The
+preset uses a 1 × 2 grid with pitch Y 31 mm shifted up by 3.5 mm (`grid.offsetY`), so the
+anchors sit exactly there, and a Ø46 opening on the socket. The two-button Bilresa lies
+horizontally (rotation 90°, 70 × 40) above the opening, 15.9 mm above the key (`dy`, the
+smallest that keeps minWall plus the minimal style's chamfers to the opening: pocket centre
+y = 34.9). It does not fit the plate's height, so **the cover grows upwards only** and the
+socket stays near its bottom: 96.8 × 110.2 mm in the minimal style, centred 6.7 mm above the
+plate centre (the plate still sits in the cavity; glue it on as usual). The bridge access hole
+spans y 17.9 … 51.9, so the key centre is inside it, and the gap below the magnet strip
+(y 17.9 … 23.7) lies over the key's upper half: press the old rocker there with a thin tool.
+Styles with wider socket edges (organic, faceted, stepped) push the Bilresa up a little further
+(at most to y = 36, where the key centre would leave the hole; their socket edge gets narrower
+instead) and the cover grows a little taller (organic 101.33 × 117.47, faceted 96.8 × 117.3,
+stepped 96.8 × 112.2, box 96.8 × 109.6 mm).
 
 ## Styles and print orientation
 
@@ -94,11 +131,14 @@ Identical in config, layout, geometry and viewer:
   Origin = plate centre on the wall. The cover occupies z ∈ [0, frontZ]; z = 0 is the
   glued base. This matches three.js (Y up, camera at +Z), so the viewer needs no conversion.
 - Grid rows are numbered top → bottom, columns left → right. Module (c, r) anchor:
-  `x = (c − (cols−1)/2)·pitchX`, `y = ((rows−1)/2 − r)·pitchY`. The anchor is the physical
-  rocker/socket centre; a feature's centre is anchor + dx/dy (+dy is up) + automatic
-  spreading. Rotations are counter-clockwise about +Z; an unrotated Bilresa has its long
+  `x = (c − (cols−1)/2)·pitchX + offsetX`, `y = ((rows−1)/2 − r)·pitchY + offsetY` (the grid
+  offset defaults to 0). The anchor is the physical rocker/socket centre; a feature's centre is
+  anchor + dx/dy (+dy is up) + automatic spreading. Rotations are counter-clockwise about +Z; an unrotated Bilresa has its long
   axis along Y.
 - Only `resolveLayout` converts conventions. Never feed DOM/screen coordinates into geometry.
+- The cover outline is a rounded rect of `outer.w × outer.h` centred on `(outer.cx, outer.cy)`:
+  the union of what the plate (+ clearance + skirt), every feature (+ margins) and every finger
+  notch need, so its centre may leave the plate centre. The plate always stays at the origin.
 - Height chain: `frontZ = plate.depth + rockerGap + floorT + pocketDepth`
   (≈ 12 + 2 + 2.4 + 10 = 26.4 mm), with `floorT ≥ strip.protrusion + print.tolerance + 1.2`.
   The Bilresa's back rests on the floor (`floorZ = frontZ − pocketDepth`), its front stands
@@ -133,7 +173,8 @@ glue-on metal strip (≈ 22 × 51 mm, ≈ 1 mm proud once in place). All of it l
   wall. The ≈ 6 mm gaps beside the strip are the access: press the old rocker with a thin tool
   (the checks list notes gaps under 8 mm). The rocker centre must lie inside the hole (error
   otherwise).
-- **Finger notch.** Ø 14 mm at the pocket's end farthest from the plate centre, cut from the
+- **Finger notch.** Ø 14 mm at the pocket's end farthest from the plate centre (ties: the lower
+  end, then the right one, e.g. the +x end of the combo's lying Bilresa), cut from the
   face down to 2 mm above the floor so a fingertip reaches the Bilresa's rounded edge to lift
   it out. Its backing is merged into the skirt when it would end less than `minWall` short of it.
   The organic, faceted and stepped styles let the notch reach into their edge zone (fillet,
