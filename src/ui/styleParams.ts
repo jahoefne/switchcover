@@ -1,12 +1,12 @@
 /**
  * Turn a style's zod param schema + `ui` metadata + `limits` into a list of form controls.
  *
- * Numbers become sliders when the style supplies `ui` ranges (intersected with the schema's
- * own min/max), plain number inputs otherwise. Booleans become checkboxes, enums selects.
- * Edge-radius params (key or label mentions edge / fillet / chamfer / round) are clamped to
- * `limits.maxEdgeR`, as the contract asks the UI to do.
+ * Numbers become sliders when the style supplies number `ui` metadata (its range intersected
+ * with the schema's own min/max), plain number inputs otherwise. Booleans become checkboxes
+ * (label from boolean `ui` metadata if given), enums selects. A number param whose metadata says
+ * `clampTo: 'maxEdgeR'` gets its max lowered to `limits.maxEdgeR`.
  */
-import type { StyleLimits } from '../geometry/contract';
+import type { NumberParamUi, StyleLimits, StyleParamUi } from '../geometry/contract';
 import type { AnyCoverStyle } from '../styles';
 
 export type ParamControl =
@@ -27,9 +27,6 @@ export type ParamControl =
   | { key: string; kind: 'boolean'; label: string; value: boolean }
   | { key: string; kind: 'enum'; label: string; value: string; options: string[] }
   | { key: string; kind: 'unsupported'; label: string; value: unknown };
-
-/** Param keys / labels the UI clamps to `limits.maxEdgeR`. */
-export const EDGE_PARAM_RE = /edge|fillet|chamfer|round/i;
 
 /** Minimal view of a zod 4 schema node (we only read `def`). */
 interface ZodNode {
@@ -65,15 +62,17 @@ export function describeStyleParams(
   limits: StyleLimits,
 ): ParamControl[] {
   const shape = (style.params as unknown as { shape: Record<string, ZodNode> }).shape ?? {};
-  const ui = (style.ui ?? {}) as Record<string, { label: string; min: number; max: number; step: number; unit?: string } | undefined>;
+  const ui = (style.ui ?? {}) as Record<string, StyleParamUi | undefined>;
   const controls: ParamControl[] = [];
   for (const [key, raw] of Object.entries(shape)) {
     const node = unwrap(raw);
-    const meta = ui[key];
-    const label = meta?.label ?? humanize(key);
+    const anyMeta = ui[key];
+    const label = anyMeta?.label ?? humanize(key);
     const value = params[key];
     switch (node.def.type) {
       case 'number': {
+        // Boolean metadata on a number param is ignored (only its label is used).
+        const meta: NumberParamUi | undefined = anyMeta && anyMeta.kind !== 'boolean' ? anyMeta : undefined;
         const schemaMin = finite(node.minValue) ? node.minValue : undefined;
         const schemaMax = finite(node.maxValue) ? node.maxValue : undefined;
         let min = Math.max(meta?.min ?? -Infinity, schemaMin ?? -Infinity);
@@ -81,7 +80,7 @@ export function describeStyleParams(
         if (!Number.isFinite(min)) min = Math.min(0, typeof value === 'number' ? value : 0);
         if (!Number.isFinite(max)) max = Math.max(min + 100, typeof value === 'number' ? value * 4 : 0);
         let clampedBy: 'maxEdgeR' | undefined;
-        if ((EDGE_PARAM_RE.test(key) || EDGE_PARAM_RE.test(label)) && Number.isFinite(limits.maxEdgeR) && limits.maxEdgeR < max) {
+        if (meta?.clampTo === 'maxEdgeR' && Number.isFinite(limits.maxEdgeR) && limits.maxEdgeR < max) {
           max = Math.max(min, limits.maxEdgeR);
           clampedBy = 'maxEdgeR';
         }

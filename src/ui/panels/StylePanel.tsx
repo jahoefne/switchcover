@@ -53,7 +53,7 @@ export function StylePanel({ config, style, params, limits, update }: StylePanel
           case 'number': {
             const hint =
               ctl.clampedBy === 'maxEdgeR'
-                ? `Limited to ${fmt(limits.maxEdgeR, 2)} mm by this cover's size.`
+                ? `Limited to ${fmt(Math.max(ctl.min, limits.maxEdgeR), 2)} mm by this style's other settings.`
                 : undefined;
             const onChange = (v: number) => setParam(ctl.key, clampControl(ctl, v));
             return ctl.slider ? (

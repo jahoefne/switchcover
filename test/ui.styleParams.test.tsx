@@ -5,12 +5,14 @@ import { z } from 'zod';
 import { presetConfig } from '../src/config/presets';
 import type { CoverConfig } from '../src/config/schema';
 import type { CoverStyle } from '../src/geometry/contract';
-import { listStyles, type AnyCoverStyle } from '../src/styles';
+import { getStyle, listStyles, type AnyCoverStyle } from '../src/styles';
 import { StylePanel } from '../src/ui/panels/StylePanel';
 import { describeStyleParams, humanize } from '../src/ui/styleParams';
 
 const params = z.object({
   edgeR: z.number().min(0).max(20).default(8),
+  /** Looks like an edge param but is not tagged: never clamped. */
+  chamferSize: z.number().min(0).max(10).default(2),
   sag: z.number().min(0).max(3).default(1.5),
   frameWidth: z.number().min(2).max(40).default(10),
   steps: z.number().int().min(2).max(3).default(2),
@@ -25,8 +27,10 @@ const fakeStyle: CoverStyle<typeof params> = {
   description: 'A test style.',
   params,
   ui: {
-    edgeR: { label: 'Top edge radius', min: 0, max: 12, step: 0.5, unit: 'mm' },
+    edgeR: { label: 'Top edge radius', min: 0, max: 12, step: 0.5, unit: 'mm', clampTo: 'maxEdgeR' },
+    chamferSize: { kind: 'number', label: 'Chamfer', min: 0, max: 10, step: 0.5, unit: 'mm' },
     sag: { label: 'Dome', min: 0, max: 3, step: 0.1, unit: 'mm' },
+    groove: { kind: 'boolean', label: 'Shadow groove' },
   },
   printOrientation: 'faceUp',
   printHint: 'Print face up.',
@@ -43,16 +47,19 @@ const defaults = params.parse({}) as Record<string, unknown>;
 afterEach(() => cleanup());
 
 describe('describeStyleParams', () => {
-  it('maps zod fields + ui metadata to controls and clamps edge radii to maxEdgeR', () => {
+  it('maps zod fields + ui metadata to controls and clamps params tagged clampTo to maxEdgeR', () => {
     const controls = describeStyleParams(style, defaults, { minFrame: 0, minFrontZ: 0, maxEdgeR: 7.5 });
     const byKey = Object.fromEntries(controls.map((c) => [c.key, c]));
     expect(byKey.edgeR).toMatchObject({ kind: 'number', label: 'Top edge radius', min: 0, max: 7.5, step: 0.5, unit: 'mm', slider: true, clampedBy: 'maxEdgeR', value: 8 });
     expect(byKey.sag).toMatchObject({ kind: 'number', min: 0, max: 3, slider: true, value: 1.5 });
     expect(byKey.sag).not.toHaveProperty('clampedBy', 'maxEdgeR');
+    // untagged: no clamp, whatever the name says
+    expect(byKey.chamferSize).toMatchObject({ kind: 'number', label: 'Chamfer', max: 10, slider: true });
+    expect(byKey.chamferSize).not.toHaveProperty('clampedBy', 'maxEdgeR');
     // No ui metadata: schema bounds, plain number input, humanized label.
     expect(byKey.frameWidth).toMatchObject({ kind: 'number', label: 'Frame width', min: 2, max: 40, slider: false, step: 0.1 });
     expect(byKey.steps).toMatchObject({ kind: 'number', step: 1, min: 2, max: 3 });
-    expect(byKey.groove).toEqual({ key: 'groove', kind: 'boolean', label: 'Groove', value: true });
+    expect(byKey.groove).toEqual({ key: 'groove', kind: 'boolean', label: 'Shadow groove', value: true });
     expect(byKey.finish).toMatchObject({ kind: 'enum', options: ['matte', 'gloss'], value: 'matte' });
   });
 
@@ -60,6 +67,20 @@ describe('describeStyleParams', () => {
     const controls = describeStyleParams(style, defaults, { minFrame: 0, minFrontZ: 0, maxEdgeR: Infinity });
     expect(controls.find((c) => c.key === 'edgeR')).toMatchObject({ max: 12 });
     expect(controls.find((c) => c.key === 'edgeR')).not.toHaveProperty('clampedBy', 'maxEdgeR');
+  });
+
+  it('registered styles: organic clamps its fillet to its corner radius, faceted labels its groove', () => {
+    const organic = getStyle('organic')!;
+    const op = organic.params.parse({ cornerR: 6 }) as Record<string, unknown>;
+    const plate = { w: 90, h: 90, protrusion: 12, cornerR: 3, clearance: 1 };
+    const edge = describeStyleParams(organic, op, organic.limits(op, plate)).find((c) => c.key === 'edgeR');
+    expect(edge).toMatchObject({ kind: 'number', max: 6, clampedBy: 'maxEdgeR' });
+    const faceted = getStyle('faceted')!;
+    const fp = faceted.params.parse({}) as Record<string, unknown>;
+    const controls = describeStyleParams(faceted, fp, faceted.limits(fp, plate));
+    expect(controls.find((c) => c.key === 'groove')).toEqual({ key: 'groove', kind: 'boolean', label: 'Shadow groove', value: true });
+    // faceted's maxEdgeR is 0, but none of its params is tagged, so nothing is clamped
+    expect(controls.filter((c) => c.kind === 'number' && c.clampedBy)).toEqual([]);
   });
 
   it('humanizes camelCase keys', () => {
@@ -82,11 +103,11 @@ describe('StylePanel', () => {
     const update = renderPanel(config);
     const slider = screen.getByLabelText('Top edge radius slider') as HTMLInputElement;
     expect(slider.max).toBe('7.5'); // maxEdgeR = 6 + sag 1.5
-    expect(screen.getByText(/Limited to 7\.5 mm/)).toBeTruthy();
+    expect(screen.getByText("Limited to 7.5 mm by this style's other settings.")).toBeTruthy();
     expect(screen.getByText('A test style.')).toBeTruthy();
     expect(screen.getByText(/Print face up\./)).toBeTruthy();
 
-    fireEvent.click(screen.getByLabelText('Groove'));
+    fireEvent.click(screen.getByLabelText('Shadow groove'));
     const updater = (update.mock.calls.at(-1) as unknown as [(c: CoverConfig) => void])[0];
     const draft = structuredClone(config);
     updater(draft);
