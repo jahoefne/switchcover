@@ -1,16 +1,19 @@
 /**
- * URL hash codec: `#v1.<lz-string compressToEncodedURIComponent(JSON)>`.
+ * URL hash codec: `#v2.<lz-string compressToEncodedURIComponent(JSON)>`.
  *
- * The prefix versions the CODEC (compression + framing), independently of the config's
- * own `v` field, which migrateConfig handles. Numbers are rounded to 0.01 mm before
- * encoding so hashes stay short and stable.
+ * The prefix versions the link format. `#v2.` (written since config v2) and `#v1.` (older
+ * links) use the same framing and compression and both decode; the config's own `v` field
+ * decides the migration (migrateConfig). Numbers are rounded to 0.01 mm before encoding so
+ * hashes stay short and stable.
  */
 import LZString from 'lz-string';
 import type { Warning } from '../geometry/contract';
 import { migrateConfig, type MigrateResult } from './migrate';
 import { DEFAULT_CONFIG, cloneConfig, type CoverConfig } from './schema';
 
-export const HASH_PREFIX = '#v1.';
+export const HASH_PREFIX = '#v2.';
+/** Prefixes decodeHash accepts (same codec; old links keep working). */
+export const ACCEPTED_HASH_PREFIXES = ['#v2.', '#v1.'] as const;
 
 /** Round every number in a JSON value to 0.01 (normalising −0 to 0). */
 export function roundDeep<T>(value: T): T {
@@ -43,7 +46,8 @@ export function decodeHash(hash: string | null | undefined): MigrateResult {
   const h = (hash ?? '').trim();
   if (h === '' || h === '#') return defaults();
   const normalised = h.startsWith('#') ? h : `#${h}`;
-  if (!normalised.startsWith(HASH_PREFIX)) {
+  const prefix = ACCEPTED_HASH_PREFIXES.find((p) => normalised.startsWith(p));
+  if (!prefix) {
     const m = /^#v(\d+)\./.exec(normalised);
     return defaults({
       code: 'hash-invalid',
@@ -55,7 +59,7 @@ export function decodeHash(hash: string | null | undefined): MigrateResult {
   }
   let json: string | null = null;
   try {
-    json = LZString.decompressFromEncodedURIComponent(normalised.slice(HASH_PREFIX.length));
+    json = LZString.decompressFromEncodedURIComponent(normalised.slice(prefix.length));
   } catch {
     json = null;
   }

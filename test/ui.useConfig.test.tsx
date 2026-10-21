@@ -46,7 +46,7 @@ describe('useConfig', () => {
     expect(result.current.config.bilresa.pocketClearance).toBe(0.3);
     expect(window.location.hash).toBe(''); // still debouncing
     flushHash();
-    expect(window.location.hash.startsWith('#v1.')).toBe(true);
+    expect(window.location.hash.startsWith('#v2.')).toBe(true);
     expect(window.location.hash).toBe(encodeHash(result.current.config));
     const decoded = decodeHash(window.location.hash);
     expect(decoded.warnings).toEqual([]);
@@ -90,7 +90,7 @@ describe('useConfig', () => {
     const { result } = renderHook(() => useConfig());
     act(() => {
       result.current.update((c) => {
-        c.bilresa.pocketDepth = 8;
+        c.bilresa.pocketDepth = 9;
         c.cover.size = { w: 200, h: 200 };
       });
     });
@@ -100,7 +100,7 @@ describe('useConfig', () => {
     expect(c.plate).toEqual(p.plate);
     expect(c.grid).toEqual(p.grid);
     expect(c.modules).toEqual(p.modules);
-    expect(c.bilresa.pocketDepth).toBe(8);
+    expect(c.bilresa.pocketDepth).toBe(9);
     expect(c.cover.size).toBe('auto');
     flushHash();
     expect(decodeHash(window.location.hash).config).toEqual(c);
@@ -150,7 +150,7 @@ describe('useConfig', () => {
     const { result } = renderHook(() => useConfig());
     act(() => void result.current.update((c) => void (c.plate.cornerR = 5)));
     const url = result.current.shareUrl();
-    expect(url.startsWith(`${window.location.origin}${window.location.pathname}#v1.`)).toBe(true);
+    expect(url.startsWith(`${window.location.origin}${window.location.pathname}#v2.`)).toBe(true);
     expect(decodeHash(new URL(url).hash).config.plate.cornerR).toBe(5);
   });
 });

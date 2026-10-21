@@ -11,8 +11,8 @@ export const V1_HASH_FIXTURES = {
     '#v1.N4IgbiBcCMA0IAcA2BDALgUyqBAnDAzhmlCACYYC0ATAB7QAWI8A7lNAKzXxOQAccchgRpe0AAzwAxgHtcAOwy4ASlAAsAX3gBzXAEsy2ELKQEo3ELhkszMeAj1opDABpQA7IIdOGATQ-QWiAAtjJkAK5IhFAA2qAmUJKW1onwVlGkAEZ6SPgEKMzJJJBJZLSp5ACeFdm5hAWQoGAo+ijyxSDUmeFoaDLyIBpa8TJI7GkpJRMZkCC1eQUTxaXlU1U1OQtGza3tpF09fQNDALrSMmBKRgRolTNzMuXwN3cYAAotKMG2wEEEANZ6eQAFSgAGZnoDcGhQZBqAA6NTwYJAgDqKCQYzh0iin3kUiwdmSUn+SgA4igEOZkS1tED1M89AAvQkgFA9GSDeDzepGBAyEnEAAiwlEUAAnPYBaS0ABhXG4NoExLwiEgABmSBkclhCIsDAMFHkAFlafTIEiQPIZD4jBh5ChMlFDJA0Lhwhh4C7oAA2IIoKQEgg-EBsSBg-VQDh+55uvRUxogAgMSmsm4oMh6cLBQpYtSWsPuexWN3hAh6frjcirUrVEp-OMIU24OkDcNBPBA4qgPpRRX4wnieEWOR6e1odAVttJ24ZIZAA',
 } as const;
 
-/** What the 'ch-sd-1x2v-switch-socket' fixture decodes to (snapshot at generation time). */
-export const V1_SWITCH_SOCKET_EXPECTED = {
+/** The raw v1 JSON inside the 'ch-sd-1x2v-switch-socket' fixture (snapshot at generation time). */
+export const V1_SWITCH_SOCKET_RAW = {
   v: 1,
   plate: {
     preset: 'ch-sd-1x2v-switch-socket',
@@ -89,5 +89,25 @@ export const V1_SWITCH_SOCKET_EXPECTED = {
   print: {
     tolerance: 0.2,
     orientation: 'style',
+  },
+};
+
+/**
+ * What the 'ch-sd-1x2v-switch-socket' v1 fixture decodes to since config v2 (migrate.ts v1ToV2):
+ * stripMargin → stripLedge 4, access {w, h} → {w}, the 44 × 7 strip placeholder → the measured
+ * 51 × 22 strip; everything else (incl. the user's pocket depth 9 and notch Ø16) is kept.
+ */
+export const V1_SWITCH_SOCKET_MIGRATED = {
+  ...V1_SWITCH_SOCKET_RAW,
+  v: 2,
+  bilresa: {
+    pocketDepth: 9,
+    pocketClearance: 0.3,
+    floorT: 2.2,
+    hiddenMargin: 4,
+    notch: { enabled: true, d: 16 },
+    access: { w: 32 },
+    strip: { shape: 'stadium', l: 51, w: 22, protrusion: 1, dx: 0, dy: 0 },
+    stripLedge: 4,
   },
 };

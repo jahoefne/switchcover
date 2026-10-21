@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { getPreset, listPresets, presetConfig } from '../src/config/presets';
 import { CoverConfigSchema, DEFAULT_CONFIG, type CoverConfig, type ModuleConfig } from '../src/config/schema';
 import { HASH_PREFIX, decodeHash, encodeHash, roundDeep } from '../src/config/urlCodec';
-import { V1_HASH_FIXTURES, V1_SWITCH_SOCKET_EXPECTED } from './fixtures/v1Hashes';
+import { V1_HASH_FIXTURES, V1_SWITCH_SOCKET_MIGRATED, V1_SWITCH_SOCKET_RAW } from './fixtures/v1Hashes';
+import { V2_HASH_FIXTURES, V2_SWITCH_SOCKET_EXPECTED } from './fixtures/v2Hashes';
 
 /** Small deterministic PRNG (mulberry32) so failures are reproducible. */
 function rng(seed: number) {
@@ -32,7 +33,8 @@ function perturb(base: CoverConfig, rand: () => number): CoverConfig {
   c.cover.margin = between(0, 10);
   c.cover.size = rand() < 0.5 ? 'auto' : { w: between(50, 400), h: between(50, 400) };
   c.cover.styleParams = { sag: between(0, 3), label: 'x' };
-  c.bilresa.pocketDepth = between(4, 14);
+  c.bilresa.pocketDepth = between(8.5, 14);
+  c.bilresa.stripLedge = between(0, 10);
   c.bilresa.floorT = between(1, 4);
   c.bilresa.notch = { enabled: rand() < 0.5, d: between(8, 20) };
   c.bilresa.strip = { ...c.bilresa.strip, l: between(20, 60), w: between(3, 12), protrusion: between(0, 2), dx: between(-3, 3), dy: between(-5, 5) };
@@ -41,7 +43,7 @@ function perturb(base: CoverConfig, rand: () => number): CoverConfig {
   c.modules = c.modules.map((m): ModuleConfig => {
     const role = pick(['bilresa', 'outlet', 'blank', 'passthrough'] as const);
     const out: ModuleConfig = { col: m.col, row: m.row, role, rot: pick([0, 90, 180, 270] as const), dx: between(-20, 20), dy: between(-20, 20) };
-    if (role === 'bilresa') out.bilresa = { variant: pick(['2button', 'wheel'] as const), ...(rand() < 0.5 ? { pocketDepth: between(5, 12) } : {}) };
+    if (role === 'bilresa') out.bilresa = { variant: pick(['2button', 'wheel'] as const), ...(rand() < 0.5 ? { pocketDepth: between(8.5, 12) } : {}) };
     if (role === 'outlet' || role === 'passthrough') {
       out.opening = rand() < 0.5 ? { shape: 'circle', d: between(20, 60) } : { shape: 'roundedRect', w: between(20, 60), h: between(20, 60), cornerR: between(0, 8) };
     }
@@ -106,10 +108,19 @@ describe('urlCodec', () => {
     expect(CoverConfigSchema.safeParse(r.config).success).toBe(true);
   });
 
-  it('committed v1 fixtures decode to the expected presets', () => {
+  it('writes #v2. links', () => {
+    expect(HASH_PREFIX).toBe('#v2.');
+    expect(encodeHash(presetConfig('ch-sd-1x1')).startsWith('#v2.')).toBe(true);
+  });
+
+  it('committed v1 fixtures still decode, migrated to config v2', () => {
+    // the fixture itself is untouched: its payload is still the v1 snapshot
+    const payload = V1_HASH_FIXTURES['ch-sd-1x2v-switch-socket'].slice('#v1.'.length);
+    expect(JSON.parse(LZString.decompressFromEncodedURIComponent(payload)!)).toEqual(V1_SWITCH_SOCKET_RAW);
+
     const a = decodeHash(V1_HASH_FIXTURES['ch-sd-1x2v-switch-socket']);
     expect(a.warnings).toEqual([]);
-    expect(a.config).toEqual(V1_SWITCH_SOCKET_EXPECTED);
+    expect(a.config).toEqual(V1_SWITCH_SOCKET_MIGRATED);
     // the layout part must still match today's preset
     const preset = getPreset('ch-sd-1x2v-switch-socket')!.config;
     expect({ plate: a.config.plate, grid: a.config.grid, modules: a.config.modules }).toEqual({
@@ -120,7 +131,16 @@ describe('urlCodec', () => {
 
     const b = decodeHash(V1_HASH_FIXTURES['de-2x1h']);
     expect(b.warnings).toEqual([]);
+    expect(b.config.v).toBe(2);
     expect(b.config.plate).toEqual(getPreset('de-2x1h')!.config.plate);
     expect(b.config.modules).toEqual(getPreset('de-2x1h')!.config.modules);
+    expect(b.config.bilresa.strip).toEqual(getPreset('de-2x1h')!.config.bilresa.strip);
+  });
+
+  it('committed v2 fixtures decode to the expected presets', () => {
+    const a = decodeHash(V2_HASH_FIXTURES['ch-sd-1x2v-switch-socket']);
+    expect(a.warnings).toEqual([]);
+    expect(a.config).toEqual(V2_SWITCH_SOCKET_EXPECTED);
+    expect(a.config).toEqual(getPreset('ch-sd-1x2v-switch-socket')!.config);
   });
 });

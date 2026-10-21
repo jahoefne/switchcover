@@ -1,4 +1,4 @@
-import { BILRESA_VARIANTS, PASSTHROUGH_DEFAULT } from '../../config/defaults';
+import { BILRESA_VARIANTS, MIN_POCKET_DEPTH, PASSTHROUGH_DEFAULT } from '../../config/defaults';
 import type { CoverConfig, ModuleConfig, ModuleRole, OpeningSpec, Rotation } from '../../config/schema';
 import type { BilresaVariant, CoverFrame, Shape2D } from '../../geometry/contract';
 import { featureId, openingShape } from '../../layout/resolve';
@@ -217,7 +217,7 @@ function ModuleEditor({ module: m, config, edit }: ModuleEditorProps) {
               label="Pocket depth"
               unit="mm"
               value={m.bilresa.pocketDepth}
-              min={2}
+              min={MIN_POCKET_DEPTH}
               max={30}
               step={0.5}
               onChange={(v) => edit((x) => void (x.bilresa = { variant: '2button', ...x.bilresa, pocketDepth: v }))}

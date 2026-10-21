@@ -1,27 +1,46 @@
 import { describe, expect, it } from 'vitest';
-import { BILRESA_VARIANTS, DEFAULT_BILRESA, DEFAULT_COVER, DEFAULT_PRINT } from '../src/config/defaults';
-import { migrateConfig } from '../src/config/migrate';
+import { BILRESA_VARIANTS, DEFAULT_BILRESA, DEFAULT_COVER, DEFAULT_PRINT, MIN_POCKET_DEPTH, backFilletInset } from '../src/config/defaults';
+import { V1_STRIP_PLACEHOLDER, migrateConfig } from '../src/config/migrate';
 import { DEFAULT_PRESET_ID, getPreset, listPresets, presetConfig } from '../src/config/presets';
 import { CoverConfigSchema, DEFAULT_CONFIG, cloneConfig } from '../src/config/schema';
 
 describe('defaults', () => {
-  it('Bilresa variants match the measured STLs', () => {
-    expect(BILRESA_VARIANTS['2button'].outline).toEqual({ kind: 'stadium', w: 40, h: 70 });
-    expect(BILRESA_VARIANTS.wheel.outline).toEqual({ kind: 'stadium', w: 45, h: 70 });
-    expect(BILRESA_VARIANTS['2button'].depth).toBe(19.5);
-    expect(BILRESA_VARIANTS.wheel.depth).toBe(19.5);
+  it('Bilresa variants match the measured STLs (front outline, back flat, R8 back fillet, strip rim)', () => {
+    expect(BILRESA_VARIANTS['2button']).toMatchObject({ outline: { kind: 'stadium', w: 40, h: 70 }, depth: 18.5, backFlat: { w: 24, h: 54 }, backFilletR: 8, stripRim: 1 });
+    expect(BILRESA_VARIANTS.wheel).toMatchObject({ outline: { kind: 'stadium', w: 45, h: 70 }, depth: 18.5, backFlat: { w: 29, h: 54 }, backFilletR: 8, stripRim: 1 });
+    for (const v of Object.values(BILRESA_VARIANTS)) {
+      expect(v.backFlat.w).toBeCloseTo(v.outline.w - 2 * v.backFilletR, 9);
+      expect(v.backFlat.h).toBeCloseTo(v.outline.h - 2 * v.backFilletR, 9);
+    }
   });
 
-  it('uses the plan defaults for clearances and the placeholder strip', () => {
-    expect(DEFAULT_BILRESA).toMatchObject({
-      pocketDepth: 9,
+  it('backFilletInset is the exact quarter round (matches the STL slices 6.23 / 4.13 / 2.71 / 1.76)', () => {
+    const measured: Array<[number, number]> = [
+      [0.2, 6.23],
+      [1, 4.13],
+      [2, 2.71],
+      [3, 1.76],
+    ];
+    for (const [h, inset] of measured) expect(Math.abs(backFilletInset(8, h) - inset)).toBeLessThan(0.02);
+    expect(backFilletInset(8, 0)).toBe(8);
+    expect(backFilletInset(8, -1)).toBe(8);
+    expect(backFilletInset(8, 8)).toBe(0);
+    expect(backFilletInset(8, 12)).toBe(0);
+    expect(backFilletInset(0, 1)).toBe(0);
+  });
+
+  it('uses the decided defaults: 10 mm nested pocket, measured strip on 4 mm ledges, Ø14 notch', () => {
+    expect(DEFAULT_BILRESA).toEqual({
+      pocketDepth: 10,
       pocketClearance: 0.3,
       floorT: 2.4,
       hiddenMargin: 3,
-      access: { w: 34, h: 56 },
-      stripMargin: 2.5,
-      strip: { shape: 'stadium', l: 44, w: 7, protrusion: 1, dx: 0, dy: 0 },
+      notch: { enabled: true, d: 14 },
+      access: { w: 34 },
+      strip: { shape: 'stadium', l: 51, w: 22, protrusion: 1, dx: 0, dy: 0 },
+      stripLedge: 4,
     });
+    expect(MIN_POCKET_DEPTH).toBe(8.5);
     expect(DEFAULT_COVER).toMatchObject({ skinT: 3, skirtT: 2.4, minWall: 2, clearance: 1, rockerGap: 2, margin: 4 });
     expect(DEFAULT_PRINT.tolerance).toBe(0.2);
   });
@@ -88,7 +107,7 @@ describe('presets', () => {
 });
 
 describe('migrateConfig', () => {
-  it('passes a valid v1 config through unchanged', () => {
+  it('passes a valid v2 config through unchanged', () => {
     const c = presetConfig('ch-sd-2x2');
     const r = migrateConfig(JSON.parse(JSON.stringify(c)));
     expect(r.warnings).toEqual([]);
@@ -103,7 +122,7 @@ describe('migrateConfig', () => {
   });
 
   it('newer versions fall back to defaults with a warning', () => {
-    const r = migrateConfig({ ...presetConfig('ch-sd-2x2'), v: 2 });
+    const r = migrateConfig({ ...presetConfig('ch-sd-2x2'), v: 3 });
     expect(r.config).toEqual(DEFAULT_CONFIG);
     expect(r.warnings[0].message).toMatch(/newer/);
   });
@@ -130,5 +149,85 @@ describe('migrateConfig', () => {
     expect(r.config.bilresa).toEqual(DEFAULT_BILRESA);
     expect(r.config.plate.w).toBe(150);
     expect(r.warnings.map((w) => w.code)).toEqual(['config-repaired', 'config-repaired']);
+  });
+
+  it('rejects pocket depths below the nested-pocket minimum', () => {
+    const c = presetConfig('ch-sd-1x1');
+    c.bilresa.pocketDepth = 8;
+    expect(CoverConfigSchema.safeParse(c).success).toBe(false);
+    c.bilresa.pocketDepth = 8.5;
+    c.modules[0].bilresa = { variant: '2button', pocketDepth: 8 };
+    expect(CoverConfigSchema.safeParse(c).success).toBe(false);
+  });
+});
+
+describe('migrateConfig v1 → v2', () => {
+  /** A v1 config as v1 wrote it (v1 field names and defaults). */
+  function v1Config(): Record<string, any> {
+    const c: Record<string, any> = JSON.parse(JSON.stringify(presetConfig('ch-sd-2x1h-two-switches')));
+    c.v = 1;
+    c.bilresa = {
+      pocketDepth: 9,
+      pocketClearance: 0.3,
+      floorT: 2.4,
+      hiddenMargin: 3,
+      notch: { enabled: true, d: 16 },
+      access: { w: 34, h: 56 },
+      strip: { ...V1_STRIP_PLACEHOLDER },
+      stripMargin: 2.5,
+    };
+    return c;
+  }
+
+  it('stripMargin → stripLedge 4, access {w, h} → {w}, placeholder strip → measured strip; the rest is kept', () => {
+    const r = migrateConfig(v1Config());
+    expect(r.warnings).toEqual([]);
+    expect(r.config.v).toBe(2);
+    expect(r.config.bilresa).toEqual({
+      pocketDepth: 9,
+      pocketClearance: 0.3,
+      floorT: 2.4,
+      hiddenMargin: 3,
+      notch: { enabled: true, d: 16 },
+      access: { w: 34 },
+      strip: DEFAULT_BILRESA.strip,
+      stripLedge: 4,
+    });
+    expect(r.config.modules).toEqual(presetConfig('ch-sd-2x1h-two-switches').modules);
+  });
+
+  it('stripLedge is 4 whatever the old stripMargin was', () => {
+    const raw = v1Config();
+    raw.bilresa.stripMargin = 7;
+    expect(migrateConfig(raw).config.bilresa.stripLedge).toBe(4);
+  });
+
+  it('keeps a user-entered strip (and a partial placeholder that differs)', () => {
+    const raw = v1Config();
+    raw.bilresa.strip = { shape: 'rect', l: 50, w: 20, protrusion: 0.8, dx: 1, dy: 0 };
+    expect(migrateConfig(raw).config.bilresa.strip).toEqual({ shape: 'rect', l: 50, w: 20, protrusion: 0.8, dx: 1, dy: 0 });
+    raw.bilresa.strip = { l: 46 };
+    expect(migrateConfig(raw).config.bilresa.strip).toEqual({ ...V1_STRIP_PLACEHOLDER, l: 46 });
+    raw.bilresa.strip = { l: 44 }; // = the placeholder once its v1 defaults are filled in
+    expect(migrateConfig(raw).config.bilresa.strip).toEqual(DEFAULT_BILRESA.strip);
+  });
+
+  it('raises pocket depths below 8.5 mm (global and per module) with an info note', () => {
+    const raw = v1Config();
+    raw.bilresa.pocketDepth = 6;
+    raw.modules[1].bilresa = { variant: 'wheel', pocketDepth: 7 };
+    const r = migrateConfig(raw);
+    expect(r.config.bilresa.pocketDepth).toBe(8.5);
+    expect(r.config.modules[1].bilresa).toEqual({ variant: 'wheel', pocketDepth: 8.5 });
+    expect(r.warnings).toHaveLength(1);
+    expect(r.warnings[0]).toMatchObject({ code: 'config-migrated', severity: 'info' });
+  });
+
+  it('a v1 config missing the bilresa section gets the v2 defaults', () => {
+    const raw = v1Config();
+    delete raw.bilresa;
+    const r = migrateConfig(raw);
+    expect(r.warnings).toEqual([]);
+    expect(r.config.bilresa).toEqual(DEFAULT_BILRESA);
   });
 });

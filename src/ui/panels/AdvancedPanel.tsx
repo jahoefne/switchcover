@@ -1,3 +1,4 @@
+import { MIN_POCKET_DEPTH } from '../../config/defaults';
 import type { CoverConfig, PrintSettings } from '../../config/schema';
 import type { CoverFrame } from '../../geometry/contract';
 import type { AnyCoverStyle } from '../../styles';
@@ -27,10 +28,10 @@ export function AdvancedPanel({ config, frame, style, update }: AdvancedPanelPro
           label="Pocket depth"
           unit="mm"
           value={bilresa.pocketDepth}
-          min={2}
+          min={MIN_POCKET_DEPTH}
           max={30}
           step={0.5}
-          hint={`Deeper = Bilresa sits lower, cover gets taller. Face at ${fmt(frame.frontZ)} mm.`}
+          hint={`The pocket follows the Bilresa's rounded back (8 mm), then runs straight. Deeper = Bilresa sits lower, cover gets taller. Face at ${fmt(frame.frontZ)} mm.`}
           onChange={(v) => set((c) => (c.bilresa.pocketDepth = v))}
         />
         <NumberField
@@ -60,7 +61,7 @@ export function AdvancedPanel({ config, frame, style, update }: AdvancedPanelPro
           min={0}
           max={30}
           step={0.5}
-          hint="Access holes stay this far inside the Bilresa outline."
+          hint="The access hole stays this far inside the Bilresa outline (hidden behind it)."
           onChange={(v) => set((c) => (c.bilresa.hiddenMargin = v))}
         />
         <CheckField
@@ -78,11 +79,15 @@ export function AdvancedPanel({ config, frame, style, update }: AdvancedPanelPro
           disabled={!bilresa.notch.enabled}
           onChange={(v) => set((c) => (c.bilresa.notch.d = v))}
         />
-        <PairField
-          label="Access rect (w × h)"
-          hint="Centred on the rocker; clipped to stay under the Bilresa."
-          a={{ ariaLabel: 'Access width', value: bilresa.access.w, min: 0, max: 150, step: 1, unit: 'mm', onChange: (v) => set((c) => (c.bilresa.access.w = v)) }}
-          b={{ ariaLabel: 'Access height', value: bilresa.access.h, min: 0, max: 150, step: 1, unit: 'mm', onChange: (v) => set((c) => (c.bilresa.access.h = v)) }}
+        <NumberField
+          label="Access hole width"
+          unit="mm"
+          value={bilresa.access.w}
+          min={0}
+          max={150}
+          step={1}
+          hint="One hole under the strip, centred on the pocket; the gaps beside the strip let a tool reach the old switch. Clipped to stay under the Bilresa."
+          onChange={(v) => set((c) => (c.bilresa.access.w = v))}
         />
       </Group>
 
@@ -90,8 +95,8 @@ export function AdvancedPanel({ config, frame, style, update }: AdvancedPanelPro
         title="Magnet strip"
         note={
           <>
-            <strong>Placeholder:</strong> the IKEA metal strip has not been measured yet. Print the test-fit ring,
-            measure your strip and correct these values.
+            IKEA's metal strip fills the stadium recess on the Bilresa's back (≈ 22 × 51 mm, ≈ 1 mm proud). Glue it onto
+            the two end ledges of the pocket floor; it spans the access hole between them.
           </>
         }
       >
@@ -116,7 +121,7 @@ export function AdvancedPanel({ config, frame, style, update }: AdvancedPanelPro
           min={0}
           max={10}
           step={0.1}
-          hint="How far the strip stands proud of the pocket floor."
+          hint="How far the strip stands proud of the Bilresa's back (the floor indent gets this + tolerance)."
           onChange={(v) => set((c) => (c.bilresa.strip.protrusion = v))}
         />
         <PairField
@@ -125,14 +130,14 @@ export function AdvancedPanel({ config, frame, style, update }: AdvancedPanelPro
           b={{ ariaLabel: 'Strip offset Y', value: bilresa.strip.dy, min: -50, max: 50, step: 0.5, unit: 'mm', onChange: (v) => set((c) => (c.bilresa.strip.dy = v)) }}
         />
         <NumberField
-          label="Strip margin"
+          label="Glue ledge"
           unit="mm"
-          value={bilresa.stripMargin}
+          value={bilresa.stripLedge}
           min={0}
           max={30}
           step={0.5}
-          hint="Access holes keep this distance from the strip."
-          onChange={(v) => set((c) => (c.bilresa.stripMargin = v))}
+          hint="Floor length the strip rests on at each end; the access hole spans the strip between the ledges."
+          onChange={(v) => set((c) => (c.bilresa.stripLedge = v))}
         />
       </Group>
 

@@ -34,19 +34,22 @@
  *    would end 0 … minWall short of the skirt (a thin air slot) grows the cover until the gap is
  *    minWall.
  *
- * Access-hole policy (in the pocket's own unrotated frame):
- *   hole = (pocket inset by hiddenMargin) ∩ (access rect centred on the ANCHOR)
- *          − (strip indent outline offset by stripMargin)
- * represented as up to two rectangles left/right of the strip band (the strip island must
- * stay attached to the floor, so the region is never allowed to encircle it). Each
- * rectangle is clipped so it lies fully inside the pocket inset, i.e. under the Bilresa.
+ * Access-hole policy (one "bridge" hole per pocket, in the pocket's own unrotated frame):
+ *   a rounded rect (corner ACCESS_HOLE_CORNER_R) centred on the POCKET centre,
+ *     width  = min(access.w, pocket outline width − 2 · hiddenMargin)
+ *     length = strip.l − 2 · stripLedge − 2 · |strip.dy|   (both glue ledges keep ≥ stripLedge)
+ *   shortened (never narrowed) until it lies inside the pocket outline inset by hiddenMargin,
+ *   i.e. hidden behind the Bilresa. The metal strip is glued onto the two end ledges and spans
+ *   the hole; the gaps beside the strip are the tool access. Warnings: no hole → access-none;
+ *   the strip covers the whole width → access-none; a gap narrower than MIN_ACCESS_GAP →
+ *   access-narrow (info); the anchor (rocker centre) outside the hole → access-uncovered (error).
  */
 import {
   ACCESS_HOLE_CORNER_R,
   BILRESA_VARIANTS,
   MAX_OPENING_TUNNEL,
   MAX_PRINT_SIZE,
-  MIN_ACCESS_WIDTH,
+  MIN_ACCESS_GAP,
   MIN_FLOOR_UNDER_STRIP,
   OUTLET_CH,
   PASSTHROUGH_DEFAULT,
@@ -64,15 +67,12 @@ import type {
 import {
   containmentMargin,
   coreWorld,
-  insetCore,
   offsetPlaced,
   offsetShape,
   placedBounds,
   placedDistance,
-  pointsInPlaced,
-  rectCornersWorld,
+  pointInPlaced,
   shapeCore,
-  toLocal,
   toWorld,
 } from '../geometry/shape2d';
 
@@ -208,92 +208,81 @@ interface HoleResult {
   warnings: Warning[];
 }
 
-/** Access holes for one pocket (see the policy in the file header). */
-function accessHoles(
-  config: CoverConfig,
-  id: string,
-  anchor: Vec2,
-  pocket: Placed,
-  stripLocal: { cx: number; cy: number; hx: number; hy: number },
-): HoleResult {
+const MIN_HOLE = 0.5;
+
+/** The single bridge access hole of one pocket (see the policy in the file header). */
+function bridgeHole(config: CoverConfig, id: string, anchor: Vec2, pocket: Placed): HoleResult {
   const { bilresa } = config;
+  const { strip, hiddenMargin, stripLedge } = bilresa;
   const warnings: Warning[] = [];
-  const inset = insetCore(pocket.shape, bilresa.hiddenMargin); // core in pocket-local frame
-  const insetPlaced: Placed = { ...pocket, shape: offsetShape(pocket.shape, -bilresa.hiddenMargin) };
-  const [ax, ay] = toLocal(pocket, anchor);
-  const rect = {
-    x0: ax - bilresa.access.w / 2,
-    x1: ax + bilresa.access.w / 2,
-    y0: ay - bilresa.access.h / 2,
-    y1: ay + bilresa.access.h / 2,
-  };
-  const band = {
-    x0: stripLocal.cx - stripLocal.hx - bilresa.stripMargin,
-    x1: stripLocal.cx + stripLocal.hx + bilresa.stripMargin,
-    y0: stripLocal.cy - stripLocal.hy - bilresa.stripMargin,
-    y1: stripLocal.cy + stripLocal.hy + bilresa.stripMargin,
-  };
-  const reach = inset.hx + inset.r;
-  const x0 = Math.max(rect.x0, -reach);
-  const x1 = Math.min(rect.x1, reach);
-  const bandHits = band.y0 < rect.y1 && band.y1 > rect.y0 && band.x0 < x1 && band.x1 > x0;
-  const intervals: Array<[number, number]> = bandHits
-    ? [
-        [x0, Math.min(x1, band.x0)],
-        [Math.max(x0, band.x1), x1],
-      ]
-    : [[x0, x1]];
+  const none = (why: string): HoleResult => ({
+    holes: [],
+    warnings: [{ code: WARNING_CODES.accessNone, severity: 'warning', featureId: id, message: `Pocket ${id}: ${why}` }],
+  });
 
-  const holes: Placed[] = [];
-  for (const [u0, u1] of intervals) {
-    if (u1 - u0 < 0.5) continue;
-    // Largest |y| at which both x-extremes stay inside the inset stadium/rounded rect.
-    const ex = Math.max(0, Math.max(Math.abs(u0), Math.abs(u1)) - inset.hx);
-    if (ex > inset.r + EPS) continue;
-    const yMax = inset.hy + Math.sqrt(Math.max(0, inset.r * inset.r - ex * ex));
-    const v0 = Math.max(rect.y0, -yMax);
-    const v1 = Math.min(rect.y1, yMax);
-    if (v1 - v0 < 0.5) continue;
-    const w = u1 - u0;
-    const h = v1 - v0;
-    const [cx, cy] = toWorld(pocket, [(u0 + u1) / 2, (v0 + v1) / 2]);
-    holes.push({
-      shape: { kind: 'roundedRect', w, h, r: Math.min(ACCESS_HOLE_CORNER_R, Math.min(w, h) / 2) },
-      x: cx,
-      y: cy,
-      rotDeg: pocket.rotDeg,
-    });
+  const core = shapeCore(pocket.shape);
+  const outlineW = 2 * (core.hx + core.r);
+  const width = Math.min(bilresa.access.w, outlineW - 2 * hiddenMargin);
+  const wanted = strip.l - 2 * stripLedge - 2 * Math.abs(strip.dy);
+  if (width < MIN_HOLE || wanted < MIN_HOLE) {
+    return none('no access hole fits (check the access width, hidden margin, strip length and glue ledges).');
   }
+  const inset = offsetPlaced(pocket, -hiddenMargin);
+  const holeOf = (len: number): Placed => ({
+    shape: { kind: 'roundedRect', w: width, h: len, r: Math.min(ACCESS_HOLE_CORNER_R, Math.min(width, len) / 2) },
+    x: pocket.x,
+    y: pocket.y,
+    rotDeg: pocket.rotDeg,
+  });
+  // Shorten (containment is monotone in the length) until the hole is hidden behind the Bilresa.
+  let length = wanted;
+  if (containmentMargin(holeOf(wanted), inset) < -1e-9) {
+    let lo = 0;
+    let hi = wanted;
+    for (let i = 0; i < 50; i++) {
+      const mid = (lo + hi) / 2;
+      if (containmentMargin(holeOf(mid), inset) >= 0) lo = mid;
+      else hi = mid;
+    }
+    length = Math.floor(lo * 100) / 100;
+  }
+  if (length < MIN_HOLE) return none('no access hole fits under the Bilresa (check the access width and hidden margin).');
+  const hole = holeOf(length);
 
-  if (holes.length === 0) {
-    warnings.push({
-      code: WARNING_CODES.accessNone,
-      severity: 'warning',
-      featureId: id,
-      message: `Pocket ${id}: no access hole fits under the Bilresa (check dx/dy, access size and margins).`,
-    });
+  // Tool access: the gaps beside the strip (in the Bilresa's frame; the strip spans the hole).
+  const left = strip.dx - strip.w / 2 + width / 2;
+  const right = width / 2 - (strip.dx + strip.w / 2);
+  if (left <= MIN_HOLE && right <= MIN_HOLE) {
+    return {
+      holes: [hole],
+      warnings: [
+        {
+          code: WARNING_CODES.accessNone,
+          severity: 'warning',
+          featureId: id,
+          message: `Pocket ${id}: the ${fmt(strip.w)} mm strip covers the whole ${fmt(width)} mm access hole (widen the hole or narrow the strip).`,
+        },
+      ],
+    };
   }
-  const narrow = holes
-    .map((hole) => hole.shape as Extract<Shape2D, { kind: 'roundedRect' }>)
-    .filter((s) => Math.min(s.w, s.h) < MIN_ACCESS_WIDTH - EPS);
-  if (narrow.length > 0) {
-    const sizes = narrow.map((s) => `${fmt(s.w)} × ${fmt(s.h)}`).join(', ');
+  const narrowest = Math.min(left, right);
+  if (narrowest < MIN_ACCESS_GAP - EPS) {
     warnings.push({
       code: WARNING_CODES.accessNarrow,
-      severity: 'warning',
+      severity: 'info',
       featureId: id,
-      message: `Pocket ${id}: access hole${narrow.length > 1 ? 's' : ''} ${sizes} mm narrower than ${MIN_ACCESS_WIDTH} mm (fingertip).`,
+      message: `Pocket ${id}: the access gaps beside the strip are ${fmt(Math.max(0, left))} and ${fmt(Math.max(0, right))} mm wide (< ${MIN_ACCESS_GAP} mm): reach the old switch with a thin tool rather than a fingertip.`,
     });
   }
-  if (holes.some((hole) => !pointsInPlaced(rectCornersWorld(hole), insetPlaced, 1e-4))) {
+  if (!pointInPlaced(anchor, hole, 1e-6)) {
     warnings.push({
       code: WARNING_CODES.accessUncovered,
       severity: 'error',
       featureId: id,
-      message: `Pocket ${id}: an access hole is not fully covered by the Bilresa.`,
+      message: `Pocket ${id}: the rocker centre is not inside the access hole (move the pocket back over its switch).`,
     });
   }
-  return { holes, warnings };
+  return { holes: [hole], warnings };
 }
 
 /** Pocket end farther from the plate centre (ties: lower, then right). */
@@ -496,13 +485,9 @@ export function resolveLayout(config: CoverConfig, style?: { limits: StyleLimits
     }
     const [sx, sy] = toWorld(placed, [strip.dx, strip.dy]);
     const stripPlaced: Placed = { shape: stripShapeOf(), x: sx, y: sy, rotDeg: placed.rotDeg };
-    const { holes, warnings: hw } = accessHoles(config, d.id, d.anchor, placed, {
-      cx: strip.dx,
-      cy: strip.dy,
-      hx: strip.w / 2 + tol,
-      hy: strip.l / 2 + tol,
-    });
+    const { holes, warnings: hw } = bridgeHole(config, d.id, d.anchor, placed);
     warnings.push(...hw);
+    const variant = d.module.bilresa?.variant ?? '2button';
     const notchOn = d.module.bilresa?.notch ?? bilresa.notch.enabled;
     const [nx, ny] = notchCentre(placed);
     return {
@@ -510,7 +495,7 @@ export function resolveLayout(config: CoverConfig, style?: { limits: StyleLimits
       id: d.id,
       anchor: d.anchor,
       placed,
-      variant: d.module.bilresa?.variant ?? '2button',
+      variant,
       floorZ: frontZ - depthOf(d),
       strip: stripPlaced,
       stripDepth,

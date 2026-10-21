@@ -65,7 +65,7 @@ describe('App', () => {
     const active = screen.getByRole('button', { name: 'CH 1×1 — switch' });
     expect(active.getAttribute('aria-pressed')).toBe('true');
     // Cover numbers come from the main-thread resolveLayout.
-    expect(screen.getByText(/face at 25\.4 mm/)).toBeTruthy();
+    expect(screen.getByText(/face at 26\.4 mm/)).toBeTruthy();
     await waitFor(() => expect(client.calls.length).toBeGreaterThan(0));
     expect(client.calls[0].options).toBeUndefined();
   });
@@ -171,6 +171,6 @@ describe('App', () => {
     writeText.mockImplementation(() => Promise.reject(new Error('denied')));
     fireEvent.click(screen.getByRole('button', { name: 'Copy share link' }));
     const field = (await screen.findByLabelText('Copy this link:')) as HTMLTextAreaElement;
-    expect(field.value).toContain('#v1.');
+    expect(field.value).toContain('#v2.');
   });
 });

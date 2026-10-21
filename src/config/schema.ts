@@ -1,10 +1,17 @@
 /**
- * CoverConfig v1 — the complete, serialisable description of one cover.
+ * CoverConfig v2 — the complete, serialisable description of one cover.
  *
  * This is what the URL hash stores (see urlCodec.ts) and what the worker receives.
  * Everything is in mm / degrees, in the conventions documented in README.md.
  * Semantic checks (module inside the grid, duplicates, overlaps) are NOT done here but in
  * resolveLayout, which warns instead of rejecting so half-edited configs still render.
+ *
+ * v2 (2026-10-21, Bilresa orientation rework; v1 links are migrated by migrate.ts):
+ *  - bilresa.stripMargin → bilresa.stripLedge (glue ledge at each strip end; the single access
+ *    hole spans the strip between the ledges),
+ *  - bilresa.access is { w } (the hole length follows the strip),
+ *  - pocketDepth (global and per module) ≥ MIN_POCKET_DEPTH (the nested pocket follows the
+ *    Bilresa's 8 mm back fillet).
  */
 import { z } from 'zod';
 import {
@@ -12,10 +19,11 @@ import {
   DEFAULT_BILRESA,
   DEFAULT_COVER,
   DEFAULT_PRINT,
+  MIN_POCKET_DEPTH,
   plateSpan,
 } from './defaults';
 
-export const CONFIG_VERSION = 1 as const;
+export const CONFIG_VERSION = 2 as const;
 
 const mm = (min: number, max: number) => z.number().min(min).max(max);
 
@@ -48,7 +56,7 @@ export const ModuleSchema = z.object({
     .object({
       variant: BilresaVariantSchema,
       /** Per-module pocket depth override. */
-      pocketDepth: mm(2, 30).optional(),
+      pocketDepth: mm(MIN_POCKET_DEPTH, 30).optional(),
       /** Per-module finger notch override. */
       notch: z.boolean().optional(),
     })
@@ -88,25 +96,27 @@ export const CoverSettingsSchema = z.object({
 });
 
 export const BilresaSettingsSchema = z.object({
-  pocketDepth: mm(2, 30),
+  pocketDepth: mm(MIN_POCKET_DEPTH, 30),
   pocketClearance: mm(0, 5),
   floorT: mm(0.4, 20),
   hiddenMargin: mm(0, 30),
   notch: z.object({ enabled: z.boolean(), d: mm(2, 60) }),
-  access: z.object({ w: mm(0, 150), h: mm(0, 150) }),
+  /** Access (bridge) hole width across the Bilresa; its length follows the strip. */
+  access: z.object({ w: mm(0, 150) }),
   strip: z.object({
     shape: z.enum(['stadium', 'rect']),
     /** Length along the Bilresa's long axis. */
     l: mm(0.5, 150),
     /** Width across the long axis. */
     w: mm(0.5, 100),
-    /** How far the strip stands proud of the pocket floor. */
+    /** How far the strip stands proud of the Bilresa's back (= depth of its floor indent − tolerance). */
     protrusion: mm(0, 10),
     /** Strip offset from the pocket centre, in the Bilresa's own (unrotated) frame. */
     dx: mm(-50, 50),
     dy: mm(-50, 50),
   }),
-  stripMargin: mm(0, 30),
+  /** Floor length (mm) the strip is glued onto at each end; the access hole spans the rest. */
+  stripLedge: mm(0, 30),
 });
 
 export const PrintSettingsSchema = z.object({
