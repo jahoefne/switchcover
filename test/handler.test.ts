@@ -59,8 +59,10 @@ describe('worker handler', () => {
     expect(r.stl).toBeInstanceOf(ArrayBuffer);
     const stl = r.stl!;
     expect(transfer).toEqual([r.positions.buffer, r.indices.buffer, stl]);
-    expect(stl.byteLength).toBe(84 + 50 * r.stats.tris);
-    expect(stlTriangleCount(stl)).toBe(r.stats.tris);
+    // the writer drops float32-degenerate triangles, so the STL holds at most stats.tris faces
+    expect(stl.byteLength).toBe(84 + 50 * stlTriangleCount(stl));
+    expect(stlTriangleCount(stl)).toBeLessThanOrEqual(r.stats.tris);
+    expect(stlTriangleCount(stl)).toBeGreaterThan(r.stats.tris * 0.95);
     expect(new TextDecoder().decode(new Uint8Array(stl, 0, 5))).not.toBe('solid');
     // minimal prints face down: STL vertex = (−x, y, frontZ − z) of the preview mesh vertex
     const i0 = r.indices[0];
@@ -88,7 +90,8 @@ describe('worker handler', () => {
     const { r, transfer } = ok({ id: 4, kind: 'testFit', config: presetConfig('ch-sd-1x1'), quality: 'export' });
     expect(r.stl).toBeInstanceOf(ArrayBuffer);
     expect(transfer).toHaveLength(3);
-    expect(r.stl!.byteLength).toBe(84 + 50 * r.stats.tris);
+    expect(r.stl!.byteLength).toBe(84 + 50 * stlTriangleCount(r.stl!));
+    expect(stlTriangleCount(r.stl!)).toBeLessThanOrEqual(r.stats.tris);
     expect(r.stats.genus).toBe(1); // the bridge access hole
     expect(r.stats.volume).toBeGreaterThan(5_000);
     expect(r.stats.volume).toBeLessThan(25_000); // < 25 cm³ ≈ 30 g PLA
