@@ -205,19 +205,22 @@ describe('nested pocket (ch-sd-1x1, minimal)', () => {
     expect(rot[1]).toBeCloseTo(1, 9);
   });
 
-  it('with a 52 mm strip (the STL rim length) the whole reference model fits', () => {
+  it('the reference model fits the default 52 mm indentation; a 51 mm strip would clip the rim tips', () => {
     withScope(() => {
+      // default strip length 52 (= the STL rim length): the whole seated model is clear of the cover
+      const d = seatedBilresa(wasm, f, 'Bilresa_twobutton.stl');
+      expect(intersectionVolume(b.manifold, d)).toBeLessThan(1e-3);
+      // with a 51 mm strip only the rim tips overlap the glue ledges (a few mm³); the body above
+      // the floor still fits exactly
       const c = presetConfig('ch-sd-1x1');
-      c.bilresa.strip.l = 52;
+      c.bilresa.strip.l = 51;
       const g = buildCover(kit, c);
       const p = pocketOf(g);
-      expect(intersectionVolume(g.manifold, seatedBilresa(wasm, p, 'Bilresa_twobutton.stl'))).toBeLessThan(1);
-      // and with the default 51 mm strip only the rim tips overlap the ledges (a few mm³)
-      const d = seatedBilresa(wasm, f, 'Bilresa_twobutton.stl');
-      const v = intersectionVolume(b.manifold, d);
+      const d51 = seatedBilresa(wasm, p, 'Bilresa_twobutton.stl');
+      const v = intersectionVolume(g.manifold, d51);
       expect(v).toBeGreaterThan(1);
       expect(v).toBeLessThan(10);
-      expect(intersectionVolume(b.manifold, d.intersect(kit.prism(BIG, f.floorZ + 1e-3, 80)))).toBeLessThan(1e-3);
+      expect(intersectionVolume(g.manifold, d51.intersect(kit.prism(BIG, p.floorZ + 1e-3, 80)))).toBeLessThan(1e-3);
       return null;
     });
   });

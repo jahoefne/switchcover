@@ -6,7 +6,7 @@
  */
 export const V2_HASH_FIXTURES = {
   'ch-sd-1x2v-switch-socket':
-    '#v2.N4IgbiBcBMA0IAcA2BDALgUyqBAnDAzhmlCAMYAWAtAQCZUCMAHtGDQO4CWalNA9mQDWxEPHZQAnAAZ4FKAwCsMkLQwI0cyAzjk+uAHYZcAJSgBmAL7wA5rk61supAXnxcfdi5jwE3SgA0oADZlXx4KAE1gqSsQAFs+WgBXJEIoAG1QMj4kKGV3cUh8nKxIEAAjTiR8AhRREHcSIvhaJjyWgE92iqqaushQMBQ7FH0mkGhypLQ0Pn0QCyssnO6C1waS0j5p1JI3PiblVu7aLuaQPgQMfU59a0cCChQr0jJOXDJU+odIABYgxYAXXg2TARgeaA6XzKcVunDiKFy8AIkNSAAVhig4l5gLECIJbgAVczIgm4NDEmAAOl+8Fh+gA6ojct5yKlMfoyKUGPshEYAOLPKA6BG4ay3KC0kAETgAL1KIBQ0z4C3glWqhH6OAEwjQABE1Bp5KEdcQAMLs3CjLl5KlmeAAMyQfD0lOgNNk9lU+gAssNxfNIPaQPoDpRHNcUOVUj80LgkhgWvJfrEUGQuQQcSBCmYU8i45wEA8ni8yiiULROEk4vUWQoednhTo8Ad4zK5utjudTnk8QWEAAZDC0aylPOIOxjRyzVJWzmlKRUnR6TjXNDoTgdsuorCLIA',
+    '#v2.N4IgbiBcBMA0IAcA2BDALgUyqBAnDAzhmlCAMYAWAtAQCZUCMAHtGDQO4CWalNA9mQDWxEPHZQAnAAZ4FKAwCsMkLQwI0cyAzjk+uAHYZcAJSgBmAL7wA5rk61supAXnxcfdi5jwE3SgA0oADZlXx4KAE1gqSsQAFs+WgBXJEIoAG1QMj4kKGV3cUh8nKxIEAAjTiR8AhRREHcSIvhaJjyWgE92iqqaushQMBQ7FH0mkGhypLQ0Pn0QCyssnO6C1waS0j5p1JI3PiblVu7aLuaQPgQMfU59a0cCChQr0jJOXDJU+odIABYgxYAXXg2TARgeaA6XzKcVunDiKFy8AIkNSAAVhig4l5gLECIJbgAVczIgm4NDEmAAOl+8Fh+gA6ojct5yKlMfoyKUGPshEYAOLPKA6BG4ay3KC0kAETgAL1KIBQ0z4C3glWqhH6OAEwjQABE1Bp5KEdcQAMLs3CjLl5KlmeAAMyQfD0lOgNNk9lU+gAssNxfNIPaQPoDpRHNcUOVUj80LgkhgWvJfrEUGQuQQcSBCmYU8i45wEA8ni8yiiULROEk4vUWQodIVoDo8Ad4zK5utjudTnk8QWEAAZDC0aylPOIOxjRyzVJWzmlKRUnR6TjXNDoTgdsuorCLIA',
 } as const;
 
 /** What the 'ch-sd-1x2v-switch-socket' v2 fixture decodes to (snapshot at generation time). */
@@ -26,7 +26,7 @@ export const V2_SWITCH_SOCKET_EXPECTED = {
     hiddenMargin: 3,
     notch: { enabled: true, d: 14 },
     access: { w: 34 },
-    strip: { shape: 'stadium', l: 51, w: 22, protrusion: 1, dx: 0, dy: 0 },
+    strip: { shape: 'stadium', l: 52, w: 22, protrusion: 1, dx: 0, dy: 0 },
     stripLedge: 4,
   },
   print: { tolerance: 0.2, orientation: 'style' },

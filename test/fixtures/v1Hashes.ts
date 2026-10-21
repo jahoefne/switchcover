@@ -95,7 +95,7 @@ export const V1_SWITCH_SOCKET_RAW = {
 /**
  * What the 'ch-sd-1x2v-switch-socket' v1 fixture decodes to since config v2 (migrate.ts v1ToV2):
  * stripMargin → stripLedge 4, access {w, h} → {w}, the 44 × 7 strip placeholder → the measured
- * 51 × 22 strip; everything else (incl. the user's pocket depth 9 and notch Ø16) is kept.
+ * 52 × 22 strip; everything else (incl. the user's pocket depth 9 and notch Ø16) is kept.
  */
 export const V1_SWITCH_SOCKET_MIGRATED = {
   ...V1_SWITCH_SOCKET_RAW,
@@ -107,7 +107,7 @@ export const V1_SWITCH_SOCKET_MIGRATED = {
     hiddenMargin: 4,
     notch: { enabled: true, d: 16 },
     access: { w: 32 },
-    strip: { shape: 'stadium', l: 51, w: 22, protrusion: 1, dx: 0, dy: 0 },
+    strip: { shape: 'stadium', l: 52, w: 22, protrusion: 1, dx: 0, dy: 0 },
     stripLedge: 4,
   },
 };

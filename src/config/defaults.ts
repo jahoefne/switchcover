@@ -13,7 +13,7 @@ import type { BilresaVariant, Shape2D } from '../geometry/contract';
 // its full outline for 10 mm, then rounds off with an exact R8 quarter round into the flat
 // BACK at z = −18.5, i.e. at height h above the back flat the outline is inset by
 //     backFilletInset(h) = R − √(R² − (R − h)²)      (R = backFilletR, 0 ≤ h ≤ R).
-// On the back flat sits a 1 mm proud stadium rim (outer ≈ 22 × 51.4, 0.29 mm off-centre along
+// On the back flat sits a 1 mm proud stadium rim (outer 22 × 52 (y from −25.4 to +26.0) along
 // Y): the recess of IKEA's glue-on metal strip, which fills it and stands ≈ 1 mm proud.
 // The Bilresa sits back-first in its pocket: back flat on the pocket floor, front outwards.
 // ---------------------------------------------------------------------------
@@ -86,11 +86,11 @@ export const DEFAULT_BILRESA: BilresaSettings = {
   /** Access (bridge) hole width across the Bilresa, centred on the pocket. */
   access: { w: 34 },
   /**
-   * IKEA's glue-on metal strip (user-confirmed 2026-10-21): it fills the 22 × 51 mm stadium
+   * IKEA's glue-on metal strip (user-confirmed 2026-10-21): it fills the ≈ 22 × 51–52 mm stadium (the indentation uses 52, the rim length, so the model and the strip both fit)
    * recess on the Bilresa's back and stands ≈ 1.0 mm proud. The pocket floor gets an indent
    * of strip + 2 · print.tolerance, protrusion + tolerance deep.
    */
-  strip: { shape: 'stadium', l: 51, w: 22, protrusion: 1.0, dx: 0, dy: 0 },
+  strip: { shape: 'stadium', l: 52, w: 22, protrusion: 1.0, dx: 0, dy: 0 },
   /**
    * Length of floor (mm) the strip rests on at each end. The strip is glued onto these two
    * ledges and spans the access hole between them (hole length = strip length − 2 · ledge).

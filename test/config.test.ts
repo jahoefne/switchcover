@@ -37,7 +37,7 @@ describe('defaults', () => {
       hiddenMargin: 3,
       notch: { enabled: true, d: 14 },
       access: { w: 34 },
-      strip: { shape: 'stadium', l: 51, w: 22, protrusion: 1, dx: 0, dy: 0 },
+      strip: { shape: 'stadium', l: 52, w: 22, protrusion: 1, dx: 0, dy: 0 },
       stripLedge: 4,
     });
     expect(MIN_POCKET_DEPTH).toBe(8.5);

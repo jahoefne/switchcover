@@ -387,7 +387,7 @@ describe('access hole (one bridge hole under the strip)', () => {
     return s;
   }
 
-  it('default pocket: 34 mm wide, shortened from 43 (= 51 − 2·4) to fit the inset end caps; 6 mm gaps (info)', () => {
+  it('default pocket: 34 mm wide, shortened from 44 (= 52 − 2·4) to fit the inset end caps; 6 mm gaps (info)', () => {
     const c = presetConfig('ch-sd-1x1');
     const f = resolveLayout(c);
     const [p] = pockets(f);
@@ -407,10 +407,10 @@ describe('access hole (one bridge hole under the strip)', () => {
     const c = presetConfig('ch-sd-1x1');
     c.bilresa.stripLedge = 8;
     const [p] = pockets(resolveLayout(c));
-    expect(checkHole(p, c).h).toBeCloseTo(51 - 16, 9);
+    expect(checkHole(p, c).h).toBeCloseTo(52 - 16, 9);
     c.bilresa.strip.dy = 2; // off-centre strip: both ledges keep 8 mm
     const [q] = pockets(resolveLayout(c));
-    expect(checkHole(q, c).h).toBeCloseTo(51 - 16 - 4, 9);
+    expect(checkHole(q, c).h).toBeCloseTo(52 - 16 - 4, 9);
   });
 
   it('width = min(access.w, pocket width − 2·hiddenMargin); the wheel pocket is wider', () => {
@@ -484,7 +484,7 @@ describe('features', () => {
   it('pocket outline = Bilresa outline + clearance, strip = strip + tolerance', () => {
     const [p] = pockets(resolveLayout(presetConfig('ch-sd-1x1')));
     expect(p.placed.shape).toEqual({ kind: 'stadium', w: 40.6, h: 70.6 });
-    expect(p.strip.shape).toEqual({ kind: 'stadium', w: 22.4, h: 51.4 });
+    expect(p.strip.shape).toEqual({ kind: 'stadium', w: 22.4, h: 52.4 });
     expect(p.backFilletR).toBe(8);
     expect(p.variant).toBe('2button');
   });
