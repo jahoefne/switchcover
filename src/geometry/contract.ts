@@ -44,6 +44,15 @@
  *    replaces the plate protection it gave to deep edge profiles.
  *  - `CoverStyle.ui` entries are a union: numbers (`kind` omitted or 'number', optional
  *    `clampTo: 'maxEdgeR'`) and booleans (`kind: 'boolean'`). See `StyleParamUi`.
+ *
+ * WP5 (Bilresa orientation rework; the flat face of the Bilresa STL is its FRONT, the rounded end
+ * its back, which rests on the pocket floor):
+ *  - (additive) the 'pocket' feature carries `backFilletR`, the radius of the Bilresa's back
+ *    fillet: the pocket void is NESTED (follows that fillet + clearance from floorZ up, then
+ *    runs straight to the face), and the well follows it offset by the wall.
+ *  - SEMANTIC CHANGE: a pocket's `holes` is now 0 or 1 "bridge" hole under the strip (previously
+ *    up to two slots beside it); `notch` is cut from floorZ + NOTCH_FLOOR_LIFT (config/defaults),
+ *    not from floorZ. Each hole is still exactly one through-hole for the genus rule.
  */
 import type { z } from 'zod';
 import type { CrossSection, Manifold, ManifoldToplevel } from 'manifold-3d';
@@ -130,15 +139,24 @@ export type ResolvedFeature =
       /** Pocket void outline (Bilresa outline + pocketClearance) incl. dx/dy and spreading. */
       placed: Placed;
       variant: BilresaVariant;
-      /** Z of the pocket floor's top surface (where the Bilresa's back rests). */
+      /** Z of the pocket floor's top surface (where the Bilresa's flat back rests). */
       floorZ: number;
-      /** Strip indent outline (strip + print tolerance), in world coordinates. */
+      /**
+       * Radius (mm) of the Bilresa's back fillet. From floorZ up to floorZ + backFilletR the pocket
+       * void is `placed` inset by backFilletInset(backFilletR, z − floorZ) (config/defaults), above
+       * it `placed` itself (WP5, additive).
+       */
+      backFilletR: number;
+      /** Strip indent outline (strip + 2 · print tolerance), in world coordinates. */
       strip: Placed;
       /** Depth of the strip indent below floorZ (strip protrusion + print tolerance). */
       stripDepth: number;
-      /** Access holes through the floor (0–2 rounded rects), hidden under the Bilresa. */
+      /**
+       * Access holes through the floor: 0 or 1 rounded rect centred on the pocket, under the strip
+       * (which spans it, glued on the end ledges), hidden behind the Bilresa.
+       */
       holes: Placed[];
-      /** Finger notch (circle) centred on the pocket's far end, floor → face. */
+      /** Finger notch (circle) centred on the pocket's far end, floorZ + NOTCH_FLOOR_LIFT → face. */
       notch?: Placed;
     }
   | {

@@ -29,10 +29,11 @@
  *    With R = 14, rp = 4, skirtT = 2.4 that is 2.23 mm per side (+ ≤ 0.1 mm in tight corners
  *    for the meshed arc's chord error, so the preview mesh clears the plate box too).
  *  - features: outline offset by max(minWall + margin, minFrame) + the feature's edge allowance.
- *  - finger notches: the backing (notch + minWall) must fit inside the outline, and must either
- *    reach the skirt (it merges into the wall) or stay ≥ minWall away from it: a backing that
- *    would end 0 … minWall short of the skirt (a thin air slot) grows the cover until the gap is
- *    minWall.
+ *  - finger notches: the notch circle offset by max(minWall, minFrame) + the pocket edge
+ *    allowance, so the notch (and its rim edge) never cuts into a style's bevel / fillet and its
+ *    backing (notch + minWall) always fits. (minWall + margin, as for pockets, would grow plate-
+ *    sized covers for a small dimple.) A backing that ends 0 … minWall short of the skirt is
+ *    merged into the skirt by features/pocket.ts — the cover does not grow for it.
  *
  * Access-hole policy (one "bridge" hole per pocket, in the pocket's own unrotated frame):
  *   a rounded rect (corner ACCESS_HOLE_CORNER_R) centred on the POCKET centre,
@@ -349,7 +350,8 @@ type Outline = Pick<CoverFrame['outer'], 'w' | 'h' | 'cx' | 'cy' | 'cornerR'>;
 /**
  * Air gap (mm) between a finger notch's backing (the notch + minWall, see features/pocket.ts) and
  * the skirt: how far the backing lies inside the cavity outline (outer inset by skirtT). ≤ 0
- * means the backing reaches the skirt and merges into it.
+ * means the backing reaches the skirt and merges into it; 0 … minWall means features/pocket.ts
+ * bridges it to the skirt (no thin air slot).
  */
 export function backingGap(outer: Outline, skirtT: number, backing: Placed): number {
   const { w, h, cx, cy, cornerR } = outer;
@@ -497,6 +499,7 @@ export function resolveLayout(config: CoverConfig, style?: { limits: StyleLimits
       placed,
       variant,
       floorZ: frontZ - depthOf(d),
+      backFilletR: BILRESA_VARIANTS[variant].backFilletR,
       strip: stripPlaced,
       stripDepth,
       holes,
@@ -535,19 +538,10 @@ export function resolveLayout(config: CoverConfig, style?: { limits: StyleLimits
     const a = f.kind === 'pocket' ? allow.pocket : f.role === 'outlet' ? allow.opening : 0;
     [hw, hh] = growToContain(hw, hh, cornerR, offsetPlaced(f.placed, baseMargin + a));
   }
-  const backings: Placed[] = [];
-  for (const f of features) if (f.kind === 'pocket' && f.notch) backings.push(offsetPlaced(f.notch, cover.minWall));
-  for (const b of backings) [hw, hh] = growToContain(hw, hh, cornerR, b);
-  // No thin air slot between a notch backing and the skirt: either it reaches the skirt, or the
-  // cover grows until the gap is minWall. Growing only widens gaps, so this settles in a few passes.
-  for (let pass = 0; pass <= backings.length; pass++) {
-    const outer = { w: 2 * hw, h: 2 * hh, cx: 0, cy: 0, cornerR };
-    const slots = backings.filter((b) => {
-      const g = backingGap(outer, cover.skirtT, b);
-      return g > 1e-6 && g < cover.minWall - 1e-6;
-    });
-    if (slots.length === 0) break;
-    for (const b of slots) [hw, hh] = growToContain(hw, hh, cornerR, offsetPlaced(b, cover.skirtT + cover.minWall));
+  // Finger notches (see the file header): keep the notch and its rim edge off the style's edge.
+  const notchMargin = Math.max(cover.minWall, limits.minFrame) + allow.pocket;
+  for (const f of features) {
+    if (f.kind === 'pocket' && f.notch) [hw, hh] = growToContain(hw, hh, cornerR, offsetPlaced(f.notch, notchMargin));
   }
   const autoW = ceil2(2 * hw);
   const autoH = ceil2(2 * hh);
