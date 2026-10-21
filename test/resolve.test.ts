@@ -3,6 +3,8 @@ import { presetConfig } from '../src/config/presets';
 import type { CoverConfig, ModuleConfig } from '../src/config/schema';
 import type { CoverFrame, Placed, ResolvedFeature } from '../src/geometry/contract';
 import {
+  containmentMargin,
+  insideDistance,
   offsetPlaced,
   outlineWorld,
   placedBounds,
@@ -12,7 +14,8 @@ import {
   rectCornersWorld,
   toLocal,
 } from '../src/geometry/shape2d';
-import { WARNING_CODES, moduleAnchor, outerPlaced, resolveLayout } from '../src/layout/resolve';
+import type { StyleLimits } from '../src/geometry/contract';
+import { WARNING_CODES, backingGap, moduleAnchor, outerPlaced, resolveLayout } from '../src/layout/resolve';
 
 type Pocket = Extract<ResolvedFeature, { kind: 'pocket' }>;
 type Opening = Extract<ResolvedFeature, { kind: 'opening' }>;
@@ -166,7 +169,10 @@ describe('height chain', () => {
 describe('outer size', () => {
   it('auto size wraps the plate (+clearance +skirt), symmetric about the plate centre', () => {
     const f = resolveLayout(presetConfig('ch-sd-1x1'));
-    expect(f.outer).toMatchObject({ w: 96.8, h: 96.8, cx: 0, cy: 0, cornerR: 6.4, autoW: 96.8, autoH: 96.8 });
+    // 90 + 2·(1 + 2.4) across; along the pocket the finger-notch backing (notch end 43.3 + wall 2)
+    // would end 0.7 mm short of the skirt, so the cover grows until that gap is minWall:
+    // 2·(45.3 + 2 + 2.4) = 99.4.
+    expect(f.outer).toMatchObject({ w: 96.8, h: 99.4, cx: 0, cy: 0, cornerR: 6.4, autoW: 96.8, autoH: 99.4 });
   });
 
   it('grows symmetrically to keep minWall + margin around shifted pockets', () => {
@@ -177,7 +183,7 @@ describe('outer size', () => {
     c.modules[0].dx = 30;
     const g = resolveLayout(c);
     expect(g.outer.w).toBeCloseTo(2 * (30 + 20.3 + 6), 2);
-    expect(g.outer.h).toBe(96.8);
+    expect(g.outer.h).toBe(99.4);
     expect(g.outer.cx).toBe(0);
     const b = placedBounds(offsetPlaced(pockets(g)[0].placed, 6));
     expect(b.maxX).toBeLessThanOrEqual(g.outer.w / 2 + 1e-6);
@@ -218,9 +224,133 @@ describe('outer size', () => {
     expect(codes(small)).toContain(WARNING_CODES.sizeClamped);
   });
 
-  it('style minFrame widens the frame', () => {
-    const f = resolveLayout(presetConfig('ch-sd-1x1'), { limits: { minFrame: 10, minFrontZ: 0, maxEdgeR: 5 } });
-    expect(f.outer.w).toBeCloseTo(90 + 2 * (1 + 10), 6);
+  it('style minFrame keeps features (not the plate) away from the edge', () => {
+    const lim = (minFrame: number): StyleLimits => ({ minFrame, minFrontZ: 0, maxEdgeR: 5 });
+    // 10 mm: the pockets fit anyway (20.3 + 10 < 48.4 across, 35.3 + 10 < 49.7 along)
+    expect(resolveLayout(presetConfig('ch-sd-1x1'), { limits: lim(10) }).outer).toMatchObject({ w: 96.8, h: 99.4 });
+    const f = resolveLayout(presetConfig('ch-sd-1x1'), { limits: lim(20) });
+    expect(f.outer.w).toBe(96.8);
+    expect(f.outer.h).toBeCloseTo(2 * (35.3 + 20), 2);
+  });
+});
+
+describe('style limits: edge allowance, corner radius, plate inset', () => {
+  const base: StyleLimits = { minFrame: 0, minFrontZ: 0, maxEdgeR: Infinity };
+
+  it('spaces a pocket from an outlet by minWall + both edge allowances; outlets stay put', () => {
+    const limits = { ...base, edgeAllowance: 6, pocketEdgeAllowance: 1.5 };
+    const f = resolveLayout(presetConfig('ch-sd-1x2v-switch-socket'), { limits });
+    const [p] = pockets(f);
+    const [o] = openings(f);
+    expect(o.placed.y).toBe(-30);
+    expect(placedDistance(p.placed, o.placed)).toBeCloseTo(2 + 6 + 1.5, 6);
+    expect(p.placed.y).toBeCloseTo(-30 + 23 + 9.5 + 35.3, 6);
+    expect(codes(f)).not.toContain(WARNING_CODES.edgeReduced);
+    // pocketEdgeAllowance defaults to edgeAllowance
+    const both = resolveLayout(presetConfig('ch-sd-1x2v-switch-socket'), { limits: { ...base, edgeAllowance: 3 } });
+    expect(placedDistance(pockets(both)[0].placed, openings(both)[0].placed)).toBeCloseTo(2 + 3 + 3, 6);
+  });
+
+  it('keeps every feature inside the outline by minWall + margin + its edge allowance', () => {
+    const limits = { ...base, minFrame: 9, edgeAllowance: 6, pocketEdgeAllowance: 1.5 };
+    for (const id of ['ch-sd-1x2v-switch-socket', 'ch-sd-1x3v-switch-two-sockets', 'ch-sd-2x2', 'de-1x2v']) {
+      const c = presetConfig(id);
+      const f = resolveLayout(c, { limits });
+      const outer = outerPlaced(f);
+      for (const x of f.features) {
+        const allow = x.kind === 'pocket' ? 1.5 : 6;
+        expect(containmentMargin(x.placed, outer), `${id} ${x.id}`).toBeGreaterThanOrEqual(9 + allow - 1e-6);
+      }
+    }
+  });
+
+  it('reports (info) features placed closer than their edges need, (error) closer than minWall', () => {
+    // Diagonal neighbours are never spread: a pocket moved towards the outlet below-right of it.
+    const outlet: ModuleConfig = { col: 1, row: 1, role: 'outlet', rot: 0, dx: 0, dy: 0 };
+    const c = withGrid(2, 2, [bilresa(0, 0, { dx: 20, dy: -20 }), outlet]);
+    const limits = { ...base, edgeAllowance: 6, pocketEdgeAllowance: 1.5 };
+    const f = resolveLayout(c, { limits });
+    const gap = placedDistance(pockets(f)[0].placed, openings(f)[0].placed);
+    expect(gap).toBeGreaterThan(2);
+    expect(gap).toBeLessThan(2 + 6 + 1.5);
+    expect(f.warnings.find((w) => w.code === WARNING_CODES.edgeReduced)?.severity).toBe('info');
+    expect(codes(f)).not.toContain(WARNING_CODES.featureOverlap);
+    expect(codes(resolveLayout(c))).not.toContain(WARNING_CODES.edgeReduced); // no allowance, no note
+    c.modules[0] = bilresa(0, 0, { dx: 25, dy: -25 });
+    expect(codes(resolveLayout(c, { limits }))).toContain(WARNING_CODES.featureOverlap);
+  });
+
+  it('sets the outer corner radius from limits.cornerR, clamped to ≥ plate corner + clearance + skirt', () => {
+    const c = presetConfig('ch-sd-1x1');
+    expect(resolveLayout(c, { limits: { ...base, cornerR: 14 } }).outer.cornerR).toBe(14);
+    expect(resolveLayout(c, { limits: { ...base, cornerR: 2 } }).outer.cornerR).toBeCloseTo(3 + 1 + 2.4, 9);
+    expect(resolveLayout(c).outer.cornerR).toBeCloseTo(6.4, 9);
+    // never more than half the smaller side
+    const small = presetConfig('custom');
+    small.plate = { ...small.plate, w: 30, h: 30, cornerR: 3 };
+    small.modules = [];
+    const g = resolveLayout(small, { limits: { ...base, cornerR: 40 } });
+    expect(g.outer.cornerR).toBeLessThanOrEqual(Math.min(g.outer.w, g.outer.h) / 2 + 1e-9);
+  });
+
+  it.each([6.4, 8, 14, 20, 30])('cornerR %d: frame = clearance + skirtT + (Rc − rp)(1 − 1/√2), plate fits the cavity corner', (R) => {
+    const c = presetConfig('ch-sd-1x1');
+    c.modules = []; // the plate alone sets the size
+    const f = resolveLayout(c, { limits: { ...base, cornerR: R } });
+    const { skirtT } = c.cover;
+    const rp = c.plate.cornerR + c.cover.clearance;
+    const extra = Math.max(0, (R - skirtT - rp) * (1 - Math.SQRT1_2));
+    expect(f.outer.cornerR).toBeCloseTo(R, 9);
+    // sizes are ceiled to 0.01; tight corners get the chord allowance (≤ 0.12 mm) on top
+    expect(f.outer.w).toBeGreaterThanOrEqual(90 + 2 * (1 + skirtT + extra) - 1e-9);
+    expect(f.outer.w).toBeLessThanOrEqual(90 + 2 * (1 + skirtT + extra) + 0.25);
+    // geometric check: the plate + clearance outline stays inside the cavity outline …
+    const cavity = outerPlaced(f, skirtT);
+    const plateZone = { shape: { kind: 'roundedRect' as const, w: 92, h: 92, r: rp }, x: 0, y: 0, rotDeg: 0 };
+    const margin = containmentMargin(plateZone, cavity);
+    expect(margin).toBeGreaterThanOrEqual(-1e-9);
+    const sampled = Math.min(...outlineWorld(plateZone, 0, 720).map((v) => insideDistance(cavity, v)));
+    expect(sampled).toBeGreaterThanOrEqual(-1e-9);
+    // … and (no wasted frame) touches it, up to the meshing allowance and the 0.01 mm size rounding
+    expect(margin).toBeLessThan(0.15);
+  });
+
+  it('pushes the plate under the part of a deep edge profile that is high enough (edgeInset)', () => {
+    const c = presetConfig('ch-sd-1x1');
+    const seen: number[] = [];
+    const edgeInset = (drop: number) => {
+      seen.push(drop);
+      return drop >= 10 ? 0 : 12; // a 10 mm deep, 12 mm wide edge
+    };
+    const f = resolveLayout(c, { limits: { ...base, edgeInset } });
+    // budget = frontZ − (plate top + rocker gap under the pocket floor) − skinT − skirtT
+    expect(seen[0]).toBeCloseTo(25.4 - 14 - 3 - 2.4, 9);
+    expect(f.outer.w).toBeCloseTo(92 + 2 * 12, 6);
+    expect(resolveLayout(c, { limits: { ...base, edgeInset: () => 0 } }).outer.w).toBe(96.8);
+  });
+});
+
+describe('finger-notch backing vs skirt (no thin air slot)', () => {
+  const STYLE_LIKE: Record<string, StyleLimits> = {
+    none: { minFrame: 0, minFrontZ: 0, maxEdgeR: Infinity },
+    allowances: { minFrame: 0, minFrontZ: 0, maxEdgeR: Infinity, edgeAllowance: 1, pocketEdgeAllowance: 0.6 },
+    rounded: { minFrame: 9, minFrontZ: 0, maxEdgeR: Infinity, edgeAllowance: 6, pocketEdgeAllowance: 1.5, cornerR: 14 },
+  };
+  const ids = ['ch-sd-1x1', 'ch-sd-1x2v-switch-socket', 'ch-sd-2x1h-two-switches', 'ch-sd-1x2v-two-switches', 'ch-sd-1x3v-switch-two-sockets', 'ch-sd-2x2', 'de-1x1', 'de-2x1h'];
+  it.each(ids.flatMap((id) => Object.keys(STYLE_LIKE).map((k) => [id, k] as const)))('%s (%s): gap ≤ 0 or ≥ minWall, auto and manual = auto', (id, k) => {
+    const c = presetConfig(id);
+    const auto = resolveLayout(c, { limits: STYLE_LIKE[k] });
+    c.cover.size = { w: auto.outer.autoW, h: auto.outer.autoH };
+    const manual = resolveLayout(c, { limits: STYLE_LIKE[k] });
+    expect(manual.outer).toEqual(auto.outer);
+    for (const f of [auto, manual]) {
+      for (const p of pockets(f)) {
+        const backing = offsetPlaced(p.notch!, f.minWall);
+        expect(containmentMargin(backing, outerPlaced(f))).toBeGreaterThanOrEqual(-1e-9);
+        const g = backingGap(f.outer, f.skirtT, backing);
+        expect(g <= 1e-6 || g >= f.minWall - 1e-6, `${p.id} gap ${g}`).toBe(true);
+      }
+    }
   });
 });
 

@@ -1,6 +1,7 @@
 /**
- * WP2 styles (organic, faceted, stepped) against every preset frame, with the Phase-0 kit and
- * the stub builder. Probes use thin prisms intersected with the body.
+ * Styles (organic, faceted, stepped) against every preset frame: outer bodies, decorations,
+ * shells and edge profiles, plus full covers through buildCover. Probes use thin prisms
+ * intersected with the body.
  */
 import type { Manifold } from 'manifold-3d';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -9,15 +10,15 @@ import type { CoverConfig } from '../src/config/schema';
 import { buildCover } from '../src/geometry/buildCover';
 import type { CoverFrame, EdgeProfile, Kit, Placed, StyleCtx } from '../src/geometry/contract';
 import { OVERSHOOT, liveObjectCount, withScope } from '../src/geometry/kit';
-import { offsetPlaced, outlineWorld } from '../src/geometry/shape2d';
+import { offsetPlaced, outlineWorld, placedDistance } from '../src/geometry/shape2d';
 import { outerPlaced, resolveLayout } from '../src/layout/resolve';
 import { getStyle, listStyles, type AnyCoverStyle } from '../src/styles';
-import { bodyPlaced, edgeRoom, insideDistance } from '../src/styles/common/frame';
+import { availableEdgeRoom, bodyPlaced, edgeWidth, insideDistance, type EdgeWants } from '../src/styles/common/frame';
 import { offsetProfile, type Walls } from '../src/styles/common/profile';
 import { domeEnvelope } from '../src/styles/organic/dome';
-import { facetedBody } from '../src/styles/faceted';
-import { organicBody } from '../src/styles/organic';
-import { steppedBody } from '../src/styles/stepped';
+import { bevelInset, facetedBody, facetedFullEdges } from '../src/styles/faceted';
+import { filletInset, organicBody, organicFullEdges, type OrganicParams } from '../src/styles/organic';
+import { steppedBody, steppedFullEdges, tierInset, type SteppedParams } from '../src/styles/stepped';
 import { getKit } from './helpers/manifold';
 
 type Params = Record<string, unknown>;
@@ -35,6 +36,8 @@ interface Spec {
   extremes: Params[];
   /** Plateau where features sit (for edge-room checks). */
   plateau(frame: CoverFrame, p: Params): Placed;
+  /** Full-size edge profiles (what the style draws when the resolver left room). */
+  full(p: Params): { opening: EdgeProfile; pocket: EdgeProfile };
 }
 
 const SPECS: Spec[] = [
@@ -50,6 +53,7 @@ const SPECS: Spec[] = [
       { cornerR: 4, edgeR: 14, domeSag: 1.5, flareR: 1 }, // edgeR > cornerR (sharp plateau corners)
     ],
     plateau: (frame, p) => offsetPlaced(bodyPlaced(frame, p.cornerR as number), -(p.edgeR as number)),
+    full: (p) => organicFullEdges(p as OrganicParams),
   },
   {
     id: 'faceted',
@@ -67,6 +71,7 @@ const SPECS: Spec[] = [
         bodyPlaced(frame, p.cornerR as number),
         -((p.bevelW as number) + (p.groove ? 1.5 + (p.grooveW as number) : 0)),
       ),
+    full: () => facetedFullEdges(),
   },
   {
     id: 'stepped',
@@ -81,6 +86,7 @@ const SPECS: Spec[] = [
     ],
     plateau: (frame, p) =>
       offsetPlaced(bodyPlaced(frame, p.cornerR as number), -((p.tiers as number) - 1) * (p.stepInset as number)),
+    full: () => steppedFullEdges(),
   },
 ];
 
@@ -149,19 +155,10 @@ function edgesOf(style: AnyCoverStyle, ctx: StyleCtx<Params>): EdgeProfile[] {
   });
 }
 
-const edgeWidth = (e: EdgeProfile) => {
-  switch (e.kind) {
-    case 'sharp':
-      return 0;
-    case 'chamfer':
-      return e.size;
-    case 'fillet':
-    case 'flare':
-      return e.r;
-    case 'step':
-      return e.inset;
-  }
-};
+const wantsOf = (lim: { edgeAllowance?: number; pocketEdgeAllowance?: number }): EdgeWants => ({
+  opening: lim.edgeAllowance ?? 0,
+  pocket: lim.pocketEdgeAllowance ?? lim.edgeAllowance ?? 0,
+});
 
 // --- pure helpers --------------------------------------------------------------------------
 
@@ -230,6 +227,10 @@ describe.each(SPECS.map((s) => [s.id, s] as const))('%s style', (id, spec) => {
     for (const [key, meta] of Object.entries(style.ui ?? {})) {
       expect(keys).toContain(key);
       if (!meta) continue;
+      if (meta.kind === 'boolean') {
+        expect(typeof spec.defaults[key], `${key} is a boolean param`).toBe('boolean');
+        continue;
+      }
       expect(meta.min).toBeLessThan(meta.max);
       expect(meta.step).toBeGreaterThan(0);
       expect(style.params.safeParse({ [key]: meta.min }).success, `${key} min`).toBe(true);
@@ -251,6 +252,12 @@ describe.each(SPECS.map((s) => [s.id, s] as const))('%s style', (id, spec) => {
       expect(Number.isFinite(lim.minFrame) && lim.minFrame > 0).toBe(true);
       expect(Number.isFinite(lim.minFrontZ) && lim.minFrontZ > 0).toBe(true);
       expect(Number.isFinite(lim.maxEdgeR) && lim.maxEdgeR >= 0).toBe(true);
+      // the allowances are the full-size edge widths (so the resolver leaves room for them)
+      const full = spec.full(params);
+      expect(lim.edgeAllowance).toBeCloseTo(edgeWidth(full.opening), 9);
+      expect(lim.pocketEdgeAllowance).toBeCloseTo(edgeWidth(full.pocket), 9);
+      expect(lim.cornerR).toBe(params.cornerR);
+      expect(typeof lim.edgeInset).toBe('function');
       const frame = resolveLayout(cfg, { limits: lim });
       expect(frame.frontZ).toBeGreaterThanOrEqual(lim.minFrontZ - 1e-9);
       // the resolver's corner radius reaches the style's (body corners never cut the cavity)
@@ -304,11 +311,12 @@ describe.each(SPECS.map((s) => [s.id, s] as const))('%s style', (id, spec) => {
 
       // edge profiles: within the room they have, accepted by the kit
       const plateau = spec.plateau(frame, params);
+      const wants = wantsOf(style.limits(params, plateOf(cfg)));
       for (const f of frame.features) {
         const e = f.kind === 'opening' ? style.openingEdge(ctx, f) : style.pocketEdge?.(ctx, f);
         if (!e) continue;
         expect(edgeWidth(e)).toBeGreaterThanOrEqual(0);
-        expect(edgeWidth(e)).toBeLessThanOrEqual(edgeRoom(frame, f, plateau) + 1e-9);
+        expect(edgeWidth(e)).toBeLessThanOrEqual(availableEdgeRoom(frame, f, plateau, wants) + 1e-9);
       }
       for (const e of edgesOf(style, ctx)) {
         for (const p of [circle(46, 0, 0), stadium(40.6, 70.6, 0, 0)]) {
@@ -431,15 +439,120 @@ describe('organic dome', () => {
     });
   });
 
-  it('flat face without a dome; flare clamps to the room next to a pocket', () => {
+  it('flat face without a dome; both sockets get the full flare (the pocket is spread for it)', () => {
     withScope(() => {
       const { style, frame, ctx } = setup(spec, 'ch-sd-1x3v-switch-two-sockets', {});
       expect(style.surfaceZ(ctx, 0, 0)).toBe(frame.frontZ);
       const outlets = frame.features.filter((f) => f.kind === 'opening');
       const [upper, lower] = [...outlets].sort((a, b) => b.placed.y - a.placed.y);
-      // the upper socket touches the spread pocket at exactly minWall: no room for a flare
-      expect(style.openingEdge(ctx, upper)).toEqual({ kind: 'fillet', r: 0 });
+      expect(style.openingEdge(ctx, upper)).toEqual({ kind: 'flare', r: 6, depth: 6 });
       expect(style.openingEdge(ctx, lower)).toEqual({ kind: 'flare', r: 6, depth: 6 });
+      const pocket = frame.features.find((f) => f.kind === 'pocket')!;
+      expect(placedDistance(pocket.placed, upper.placed)).toBeCloseTo(frame.minWall + 6 + 1.5, 6);
+      return null;
+    });
+  });
+
+  it('safety net: sockets pushed together (outlets never move) share the room, flare → fillet', () => {
+    withScope(() => {
+      const style = styleOf('organic');
+      const cfg = presetConfig('ch-sd-1x3v-switch-two-sockets');
+      const params = style.params.parse({}) as Params;
+      const lim = style.limits(params, plateOf(cfg));
+      for (const [dy, kind, width] of [
+        [6, 'flare', 3], // 14 − 6 = 8 mm apart: (8 − 2) / 2 each
+        [9.5, 'fillet', 1.25], // 4.5 mm apart: 1.25 each, too narrow for a flare
+      ] as const) {
+        cfg.modules[2].dy = dy; // the bottom socket moves up towards the middle one
+        const frame = resolveLayout(cfg, { limits: lim });
+        expect(frame.warnings.map((w) => w.code)).toContain('edge-reduced');
+        const ctx = { frame, params, kit } as StyleCtx<Params>;
+        const [upper, lower] = frame.features.filter((f) => f.kind === 'opening').sort((a, b) => b.placed.y - a.placed.y);
+        const eu = style.openingEdge(ctx, upper);
+        const el = style.openingEdge(ctx, lower);
+        expect(eu.kind).toBe(kind);
+        expect(edgeWidth(eu)).toBeCloseTo(width, 5);
+        expect(edgeWidth(el)).toBeCloseTo(width, 5);
+        // the two edges never eat into the minimum wall between them
+        expect(edgeWidth(eu) + edgeWidth(el)).toBeLessThanOrEqual(placedDistance(upper.placed, lower.placed) - frame.minWall + 1e-6);
+        // the pocket above keeps its full fillet (it was spread for the upper socket's flare)
+        expect(style.pocketEdge!(ctx, frame.features.find((f) => f.kind === 'pocket')!)).toEqual({ kind: 'fillet', r: 1.5 });
+      }
+      return null;
+    });
+  });
+});
+
+// --- full-size edges in the shipped presets -------------------------------------------------
+
+describe('full-size edges in every Swiss preset (the resolver leaves room, nothing shrinks)', () => {
+  const swiss = PRESET_IDS.filter((id) => id.startsWith('ch-sd-'));
+  const cases = SPECS.flatMap((spec) => swiss.map((id) => [spec.id, id, spec] as const));
+  it.each(cases)('%s × %s', (_styleId, presetId, spec) => {
+    const { style, cfg, params, frame, ctx } = setup(spec, presetId, {});
+    const full = spec.full(params);
+    const wants = wantsOf(style.limits(params, plateOf(cfg)));
+    const plateau = spec.plateau(frame, params);
+    expect(frame.warnings.map((w) => w.code)).not.toContain('edge-reduced');
+    for (const f of frame.features) {
+      if (f.kind === 'opening') {
+        expect(style.openingEdge(ctx, f), `${f.id} opening edge`).toEqual(full.opening);
+        expect(availableEdgeRoom(frame, f, plateau, wants)).toBeGreaterThanOrEqual(edgeWidth(full.opening));
+      } else {
+        expect(style.pocketEdge?.(ctx, f), `${f.id} pocket edge`).toEqual(full.pocket);
+        expect(availableEdgeRoom(frame, f, plateau, wants)).toBeGreaterThanOrEqual(edgeWidth(full.pocket));
+      }
+    }
+  });
+});
+
+describe('edge profiles inverted (edgeInset)', () => {
+  it('fillet, bevel and tiers: the drop at the returned inset is within the budget, and tight', () => {
+    const filletDrop = (r: number, d: number) => (d >= r ? 0 : r - Math.sqrt(r * r - (r - d) * (r - d)));
+    for (const r of [2, 8, 14])
+      for (const b of [0.5, 2, 6, 20]) {
+        const d = filletInset(r, b);
+        expect(filletDrop(r, d)).toBeLessThanOrEqual(b + 1e-9);
+        if (d > 1e-9) expect(filletDrop(r, d - 1e-3)).toBeGreaterThan(b);
+      }
+    expect(filletInset(8, -1)).toBe(8);
+    expect(bevelInset(7, 45, 6)).toBeCloseTo(1, 9);
+    expect(bevelInset(15, 60, 9.58)).toBeCloseTo(15 - 9.58 / Math.tan(Math.PI / 3), 9);
+    expect(bevelInset(7, 45, 20)).toBe(0);
+    expect(bevelInset(7, 45, -2)).toBe(7);
+    const p = (tiers: number): SteppedParams => ({ tiers, stepH: 5, stepInset: 12, cornerR: 6 });
+    expect(tierInset(p(3), 6)).toBe(12); // tier 0 is 10 below the face, tier 1 is 5
+    expect(tierInset(p(3), 10)).toBe(0);
+    expect(tierInset(p(2), 4)).toBe(12);
+  });
+
+  it.each([
+    ['faceted', { bevelW: 15, bevelAngleDeg: 60 }],
+    ['stepped', { tiers: 3, stepH: 5, stepInset: 12 }],
+    ['organic', { edgeR: 14, cornerR: 14 }],
+  ] as const)('%s %j: deep edges keep clear of the plate box', (id, variant) => {
+    withScope(() => {
+      const spec = SPECS.find((s) => s.id === id)!;
+      for (const presetId of ['ch-sd-1x1', 'ch-sd-1x2v-switch-socket']) {
+        const { style, cfg, frame, ctx } = setup(spec, presetId, variant);
+        const body = style.outerBody(ctx);
+        const dec = style.decorate?.(ctx) ?? {};
+        const cavity = kit.prism(outerPlaced(frame, frame.skirtT), -OVERSHOOT, frame.frontZ - frame.skinT);
+        let shell = body.subtract(cavity);
+        if (dec.add) shell = shell.add(dec.add);
+        const c = cfg.cover.clearance;
+        const plateBox = kit.prism(
+          { shape: { kind: 'roundedRect', w: cfg.plate.w + 2 * c, h: cfg.plate.h + 2 * c, r: cfg.plate.cornerR + c }, x: 0, y: 0, rotDeg: 0 },
+          0,
+          cfg.plate.depth + cfg.cover.rockerGap,
+        );
+        expect(plateBox.intersect(shell).volume(), presetId).toBeLessThan(1e-6);
+        // and the face above the plate keeps a real wall (≥ the skin, vertically)
+        const zClear = cfg.plate.depth + cfg.cover.rockerGap;
+        const edge = cfg.plate.w / 2 + c - 0.05;
+        const top = columnTop(body, edge, 0, frame.frontZ + 10);
+        expect(top - zClear, presetId).toBeGreaterThanOrEqual(frame.skinT - 1e-6);
+      }
       return null;
     });
   });

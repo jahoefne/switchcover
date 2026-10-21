@@ -12,7 +12,7 @@ import { z } from 'zod';
 import type { CoverFrame, CoverStyle, EdgeProfile, Placed, StyleCtx } from '../../geometry/contract';
 import { OVERSHOOT } from '../../geometry/kit/kit';
 import { offsetPlaced } from '../../geometry/shape2d';
-import { bodyPlaced, cornerFrame, edgeRoom, insideDistance } from '../common/frame';
+import { availableEdgeRoom, bodyPlaced, insideDistance, type EdgeWants } from '../common/frame';
 import { NO_WALLS, shellFill, type Walls } from '../common/profile';
 
 const TIERS_MIN = 2;
@@ -59,6 +59,24 @@ function shapeOf(frame: CoverFrame, p: SteppedParams): Shape {
   return { body, tiers, plateau: offsetPlaced(body, -tiers[n - 1].inset) };
 }
 
+/** The full-size edge profiles (what the style draws when there is room; see availableEdgeRoom). */
+export function steppedFullEdges(): { opening: EdgeProfile; pocket: EdgeProfile } {
+  return { opening: { kind: 'step', ...OPENING_STEP }, pocket: { kind: 'chamfer', size: POCKET_CHAMFER } };
+}
+
+const WANTS: EdgeWants = { opening: OPENING_STEP.inset, pocket: POCKET_CHAMFER };
+
+/**
+ * Inverse of the tiers' drop below the face: the inset of the first tier whose tread is at most
+ * `drop` below frontZ (tier i: inset i·stepInset, drop (tiers − 1 − i)·stepH). Uses the raw
+ * params; the body clamps both to the frame, which only makes the tiers shallower and narrower.
+ */
+export function tierInset(p: SteppedParams, drop: number): number {
+  const n = Math.min(TIERS_MAX, Math.max(TIERS_MIN, Math.round(p.tiers)));
+  for (let i = 0; i < n; i++) if ((n - 1 - i) * p.stepH <= drop + 1e-9) return i * p.stepInset;
+  return (n - 1) * p.stepInset;
+}
+
 /**
  * The body offset inward by `walls` (NO_WALLS → the outer body with its base at z = 0; any
  * other walls start 0.1 mm below the base). Exported for tests and the shell fill.
@@ -95,12 +113,18 @@ export const steppedStyle: CoverStyle<typeof params> = {
   printOrientation: 'faceUp',
   printHint:
     'Print face up: face down, every tier above the first would start in mid-air. The pockets then open upwards and need no supports; support the cavity ceiling from the build plate (tree supports work well).',
-  limits: (p, plate) => ({
-    // Features stay on the top tier with a 2 mm flat margin; corners as round as asked.
-    minFrame: Math.max((p.tiers - 1) * p.stepInset + TOP_MARGIN, cornerFrame(p.cornerR, plate)),
+  limits: (p) => ({
+    // Features stay on the top tier with a 2 mm flat margin.
+    minFrame: (p.tiers - 1) * p.stepInset + TOP_MARGIN,
     minFrontZ: p.tiers * p.stepH + BASE_RESERVE,
     // Edges are square steps, not rounded.
     maxEdgeR: 0,
+    // Full-size counterbore step and pocket chamfer (the resolver spaces features by them).
+    edgeAllowance: OPENING_STEP.inset,
+    pocketEdgeAllowance: POCKET_CHAMFER,
+    cornerR: p.cornerR,
+    // The plate stays under the tiers that are high enough.
+    edgeInset: (drop) => tierInset(p, drop),
   }),
   surfaceZ: ({ frame, params: p }, x, y) => {
     const s = shapeOf(frame, p);
@@ -115,13 +139,14 @@ export const steppedStyle: CoverStyle<typeof params> = {
     const add = shellFill(c.kit, c.frame, (w) => steppedBody(c, w), s.tiers[0].top - c.frame.skinT - 1);
     return add ? { add } : {};
   },
+  // Shrink to fit is a safety net (dx/dy, manual layouts): the resolver leaves room for full size.
   openingEdge: ({ frame, params: p }, f): EdgeProfile => ({
     kind: 'step',
-    inset: Math.min(OPENING_STEP.inset, edgeRoom(frame, f, shapeOf(frame, p).plateau)),
+    inset: Math.min(OPENING_STEP.inset, availableEdgeRoom(frame, f, shapeOf(frame, p).plateau, WANTS)),
     depth: OPENING_STEP.depth,
   }),
   pocketEdge: ({ frame, params: p }, f): EdgeProfile => ({
     kind: 'chamfer',
-    size: Math.min(POCKET_CHAMFER, edgeRoom(frame, f, shapeOf(frame, p).plateau)),
+    size: Math.min(POCKET_CHAMFER, availableEdgeRoom(frame, f, shapeOf(frame, p).plateau, WANTS)),
   }),
 };

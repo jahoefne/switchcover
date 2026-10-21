@@ -29,6 +29,20 @@
  *  - `CoverStyle`'s schema bound is `z.ZodObject` (zod 4's default generics, which accept
  *    any concrete object schema incl. strict ones) instead of `z.ZodObject<any>`.
  *  - WP1 (additive): `BuildRequest.featureId` picks the pocket of a 'testFit' build.
+ *
+ * Phase 2 (integration):
+ *  - `StyleLimits` gains optional `edgeAllowance` / `pocketEdgeAllowance` (room the style's
+ *    edge treatments need beyond a feature outline; the resolver spaces features and sizes the
+ *    frame with it), `cornerR` (desired outer corner radius; the resolver sets
+ *    `frame.outer.cornerR` from it and grows the frame just enough for the plate to fit the
+ *    cavity's rounded corner) and `edgeInset` (the style's edge profile, inverted, so the
+ *    resolver keeps the plate under the part of the face that is high enough).
+ *  - SEMANTIC CHANGE: `StyleLimits.minFrame` now applies to pocket/opening outlines only, no
+ *    longer to the plate. Phase 1 styles used it to buy a corner radius (minFrame ≥ cornerR −
+ *    plate.cornerR − clearance), which grew every cover; `cornerR` replaces that, `edgeInset`
+ *    replaces the plate protection it gave to deep edge profiles.
+ *  - `CoverStyle.ui` entries are a union: numbers (`kind` omitted or 'number', optional
+ *    `clampTo: 'maxEdgeR'`) and booleans (`kind: 'boolean'`). See `StyleParamUi`.
  */
 import type { z } from 'zod';
 import type { CrossSection, Manifold, ManifoldToplevel } from 'manifold-3d';
@@ -222,14 +236,61 @@ export interface StyleCtx<P> {
 export interface StyleLimits {
   /**
    * Minimum frame width (mm): the resolver keeps at least this much between the outer edge
-   * and every pocket/opening outline, and between the outer edge and the plate (+clearance).
+   * and every pocket/opening outline (plus the feature's edge allowance, below). It does NOT
+   * apply to the plate (Phase 2); see `cornerR` and `edgeInset` for what the plate needs.
    */
   minFrame: number;
   /** Minimum frontZ the style needs (e.g. for tiers); the resolver raises frontZ to it. */
   minFrontZ: number;
-  /** Largest edge radius the style can honour; the UI clamps edge sliders to it. */
+  /** Largest edge radius the style can honour; the UI clamps sliders tagged `clampTo: 'maxEdgeR'` to it. */
   maxEdgeR: number;
+  /**
+   * How far (mm) the style's edge treatment widens an OUTLET opening at the face beyond its
+   * outline (flare radius, chamfer size, step inset). Default 0. The resolver keeps
+   * minWall + allowance(a) + allowance(b) between two features (automatic spreading moves
+   * pockets until it holds) and the allowance inside the frame, so full-size edges fit.
+   */
+  edgeAllowance?: number;
+  /** Same for pocket rims (and their finger notches). Default: `edgeAllowance`. */
+  pocketEdgeAllowance?: number;
+  /**
+   * Desired outer corner radius (mm). The resolver sets `frame.outer.cornerR` to it, clamped to
+   * ≥ plate.cornerR + clearance + skirtT and ≤ half the smaller side, and widens the frame just
+   * enough for the plate (+clearance) to fit inside the cavity's rounded corner. Default: the
+   * plate's corner radius + clearance + skirtT (concentric with the plate).
+   */
+  cornerR?: number;
+  /**
+   * The style's edge profile, inverted: the smallest inset (mm, from the outer edge) beyond which
+   * the outer surface lies at most `drop` mm below frontZ. The resolver keeps the plate
+   * (+clearance) at least `edgeInset(frontZ − zClear − skinT − skirtT)` inside the outer edge
+   * (zClear: plate top + clearance, or the pocket floors' underside if higher), so a deep bevel,
+   * fillet or tier never comes closer to the plate than the walls. Omit it when the edge never
+   * drops that far (flat or lightly chamfered styles).
+   */
+  edgeInset?(drop: number): number;
 }
+
+/** UI metadata of a number param: slider range (intersected with the schema's own bounds). */
+export interface NumberParamUi {
+  /** Optional; omitted means 'number'. */
+  kind?: 'number';
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  unit?: string;
+  /** Lower the slider max to this style limit (e.g. an edge radius limited by the corner radius). */
+  clampTo?: 'maxEdgeR';
+}
+
+/** UI metadata of a boolean param (a checkbox). */
+export interface BooleanParamUi {
+  kind: 'boolean';
+  label: string;
+}
+
+export type StyleParamUi = NumberParamUi | BooleanParamUi;
 
 /**
  * A cover style plugin. Register it in src/styles/index.ts.
@@ -244,7 +305,8 @@ export interface CoverStyle<S extends z.ZodObject, P = z.infer<S>> {
   /** Param schema. Every field must have a default so `params.parse({})` yields defaults. */
   params: S;
   migrate?(old: unknown, from: number): unknown;
-  ui?: Partial<Record<keyof P, { label: string; min: number; max: number; step: number; unit?: string }>>;
+  /** Form metadata per param (labels, slider ranges, limit clamps); params without it get defaults. */
+  ui?: Partial<Record<keyof P, StyleParamUi>>;
   printOrientation: 'faceDown' | 'faceUp';
   printHint: string;
   /** Clamps sliders and feeds resolveLayout(config, { limits }). */

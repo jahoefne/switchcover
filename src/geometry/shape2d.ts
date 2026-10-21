@@ -275,3 +275,29 @@ function convexDistance(a: Vec2[], b: Vec2[]): number {
 export function placedDistance(a: Placed, b: Placed): number {
   return convexDistance(coreWorld(a), coreWorld(b)) - shapeCore(a.shape).r - shapeCore(b.shape).r;
 }
+
+/**
+ * Signed distance from `pt` to the boundary of a placed shape, POSITIVE INSIDE (exact for every
+ * Shape2D: each is a rectangle/segment/point core ⊕ a disc).
+ */
+export function insideDistance(p: Placed, pt: Vec2): number {
+  const { hx, hy, r } = shapeCore(p.shape);
+  const [lx, ly] = toLocal(p, pt);
+  const qx = Math.abs(lx) - hx;
+  const qy = Math.abs(ly) - hy;
+  const outside = Math.hypot(Math.max(qx, 0), Math.max(qy, 0));
+  const inside = Math.min(Math.max(qx, qy), 0);
+  return r - (outside + inside);
+}
+
+/**
+ * How far `inner` lies inside `outer` (mm): the smallest distance from a point of `inner` to the
+ * boundary of `outer`, positive when `inner` is fully inside, ≤ 0 when it touches or crosses
+ * the boundary (then −(overshoot) at the worst point). Exact for every Shape2D: inner = core ⊕
+ * disc(r), and the inside distance of `outer` is concave, so its minimum over the core is at a
+ * core vertex.
+ */
+export function containmentMargin(inner: Placed, outer: Placed): number {
+  const { r } = shapeCore(inner.shape);
+  return Math.min(...coreWorld(inner).map((v) => insideDistance(outer, v))) - r;
+}

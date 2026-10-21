@@ -11,7 +11,7 @@ import { z } from 'zod';
 import type { CoverFrame, CoverStyle, EdgeProfile, Placed, StyleCtx, Vec2 } from '../../geometry/contract';
 import { OVERSHOOT } from '../../geometry/kit/kit';
 import { offsetPlaced } from '../../geometry/shape2d';
-import { bodyPlaced, cornerFrame, edgeRoom, insideDistance } from '../common/frame';
+import { availableEdgeRoom, bodyPlaced, edgeWidth, insideDistance, type EdgeWants } from '../common/frame';
 import { NO_WALLS, offsetProfile, profileRings, shellFill, type Walls } from '../common/profile';
 import { domeHeight, domePoints } from './dome';
 
@@ -60,6 +60,33 @@ function shapeOf(frame: CoverFrame, p: OrganicParams): Shape {
   };
 }
 
+/** Opening edge for a flare radius r: a flare, or a plain fillet when r is too small for one. */
+function flareEdge(r: number): EdgeProfile {
+  if (r < MIN_FLARE) return { kind: 'fillet', r };
+  return { kind: 'flare', r, depth: Math.min(r, MAX_FLARE_DEPTH) };
+}
+
+/** The full-size edge profiles (what the style draws when there is room; see availableEdgeRoom). */
+export function organicFullEdges(p: OrganicParams): { opening: EdgeProfile; pocket: EdgeProfile } {
+  return { opening: flareEdge(p.flareR), pocket: { kind: 'fillet', r: POCKET_FILLET } };
+}
+
+const wantsOf = (p: OrganicParams): EdgeWants => {
+  const e = organicFullEdges(p);
+  return { opening: edgeWidth(e.opening), pocket: edgeWidth(e.pocket) };
+};
+
+/**
+ * Inverse of the fillet's drop below the face: the inset beyond which the quarter round of
+ * radius r is at most `drop` below frontZ (drop(d) = r − √(r² − (r − d)²) for d ≤ r).
+ */
+export function filletInset(r: number, drop: number): number {
+  if (!(r > 0)) return 0;
+  if (!(drop > 0)) return r;
+  if (drop >= r) return 0;
+  return r - Math.sqrt(r * r - (r - drop) * (r - drop));
+}
+
 /** Side wall from the base, then the quarter round: inset = R − R·cos θ, z = frontZ − R + R·sin θ. */
 function filletChain(frontZ: number, r: number, rings: number): Vec2[] {
   const chain: Vec2[] = [[0, 0]];
@@ -101,7 +128,7 @@ export const organicStyle: CoverStyle<typeof params> = {
   params,
   ui: {
     cornerR: { label: 'Corner radius', min: 4, max: 30, step: 0.5, unit: 'mm' },
-    edgeR: { label: 'Edge fillet radius', min: 2, max: EDGE_R_MAX, step: 0.5, unit: 'mm' },
+    edgeR: { label: 'Edge fillet radius', min: 2, max: EDGE_R_MAX, step: 0.5, unit: 'mm', clampTo: 'maxEdgeR' },
     domeSag: { label: 'Dome height', min: 0, max: DOME_SAG_MAX, step: 0.1, unit: 'mm' },
     flareR: { label: 'Socket flare', min: 0, max: 12, step: 0.5, unit: 'mm' },
   },
@@ -109,13 +136,22 @@ export const organicStyle: CoverStyle<typeof params> = {
   printOrientation: 'faceDown',
   printHint:
     'Flat face (dome 0): print face down; add supports inside the pockets (their floors bridge) and, if your slicer flags it, under the first millimetres of the edge fillet. With a dome the face is curved: switch the print orientation to face up and support the cavity ceiling instead.',
-  limits: (p, plate) => ({
-    // Pockets/openings stay on the flat face, ≥ 1 mm inside the fillet; corners as round as asked.
-    minFrame: Math.max(p.edgeR + 1, cornerFrame(p.cornerR, plate)),
-    minFrontZ: p.edgeR + 2,
-    // The fillet may not exceed the corner radius (the plateau keeps rounded corners).
-    maxEdgeR: Math.min(EDGE_R_MAX, p.cornerR),
-  }),
+  limits: (p) => {
+    const wants = wantsOf(p);
+    return {
+      // Pockets/openings stay on the flat face, ≥ 1 mm inside the fillet.
+      minFrame: p.edgeR + 1,
+      minFrontZ: p.edgeR + 2,
+      // The fillet may not exceed the corner radius (the plateau keeps rounded corners).
+      maxEdgeR: Math.min(EDGE_R_MAX, p.cornerR),
+      // Full-size socket flare and pocket fillet (the resolver spaces features by them).
+      edgeAllowance: wants.opening,
+      pocketEdgeAllowance: wants.pocket,
+      cornerR: p.cornerR,
+      // The plate stays under the part of the fillet that is high enough (the dome only adds).
+      edgeInset: (drop) => filletInset(p.edgeR, drop),
+    };
+  },
   surfaceZ: ({ frame, params: p }, x, y) => {
     const s = shapeOf(frame, p);
     return frame.frontZ + domeHeight(s.plateau, s.sag, x, y);
@@ -126,13 +162,11 @@ export const organicStyle: CoverStyle<typeof params> = {
     const add = shellFill(c.kit, c.frame, (w) => organicBody(c, w), c.frame.frontZ - s.edgeR - 1);
     return add ? { add } : {};
   },
-  openingEdge: ({ frame, params: p }, f): EdgeProfile => {
-    const r = Math.min(p.flareR, edgeRoom(frame, f, shapeOf(frame, p).plateau));
-    if (r < MIN_FLARE) return { kind: 'fillet', r };
-    return { kind: 'flare', r, depth: Math.min(r, MAX_FLARE_DEPTH) };
-  },
+  // Shrink to fit is a safety net (dx/dy, manual layouts): the resolver leaves room for full size.
+  openingEdge: ({ frame, params: p }, f): EdgeProfile =>
+    flareEdge(Math.min(p.flareR, availableEdgeRoom(frame, f, shapeOf(frame, p).plateau, wantsOf(p)))),
   pocketEdge: ({ frame, params: p }, f): EdgeProfile => ({
     kind: 'fillet',
-    r: Math.min(POCKET_FILLET, edgeRoom(frame, f, shapeOf(frame, p).plateau)),
+    r: Math.min(POCKET_FILLET, availableEdgeRoom(frame, f, shapeOf(frame, p).plateau, wantsOf(p))),
   }),
 };

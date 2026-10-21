@@ -8,12 +8,31 @@
  * Steps:
  *  1. Height chain: stripDepth, floorT clamp, frontZ.
  *  2. Module anchors (row 0 on top) and feature centres (anchor + dx/dy).
- *  3. Automatic spreading of pockets that are closer than minWall to a neighbour along a
- *     grid axis. Pocket↔pocket conflicts move both symmetrically; pocket↔opening conflicts
- *     move only the pocket (outlets must stay on their socket).
+ *  3. Automatic spreading of pockets that are closer than minWall + the two features' edge
+ *     allowances (StyleLimits.edgeAllowance / pocketEdgeAllowance) to a neighbour along a grid
+ *     axis. Pocket↔pocket conflicts move both symmetrically; pocket↔opening conflicts move only
+ *     the pocket (outlets must stay on their socket).
  *  4. Per-pocket strip, access holes (policy below) and finger notch.
- *  5. Outer size (auto or manual ≥ auto), symmetric about the plate centre.
+ *  5. Outer size (auto or manual ≥ auto), symmetric about the plate centre; see "Outer size".
  *  6. Warnings.
+ *
+ * Outer size (all containments exact, see growToContain / containmentMargin):
+ *  - corner radius R = StyleLimits.cornerR, clamped to ≥ rp + skirtT (rp = plate.cornerR +
+ *    clearance, the plate zone's corner) and ≤ half the smaller side; default rp + skirtT.
+ *  - plate: the plate zone (plate + clearance) offset by s = max(skirtT, edgeInset(budget)) must
+ *    fit inside the outer outline (corner R). For s = skirtT that is exactly "the plate fits the
+ *    cavity" (outer inset by skirtT, corner Rc = R − skirtT). On the straight sides that needs a
+ *    frame f ≥ 0 between the cavity and the plate zone; in the corners the core corners are
+ *    (Rc − rp − f) apart on both axes, so the plate's corner arc stays inside the cavity's iff
+ *    √2·(Rc − rp − f) ≤ Rc − rp, i.e.
+ *        f ≥ (Rc − rp)·(1 − 1/√2)        (and f ≥ 0; nothing extra when rp ≥ Rc).
+ *    With R = 14, rp = 4, skirtT = 2.4 that is 2.23 mm per side (+ ≤ 0.1 mm in tight corners
+ *    for the meshed arc's chord error, so the preview mesh clears the plate box too).
+ *  - features: outline offset by max(minWall + margin, minFrame) + the feature's edge allowance.
+ *  - finger notches: the backing (notch + minWall) must fit inside the outline, and must either
+ *    reach the skirt (it merges into the wall) or stay ≥ minWall away from it: a backing that
+ *    would end 0 … minWall short of the skirt (a thin air slot) grows the cover until the gap is
+ *    minWall.
  *
  * Access-hole policy (in the pocket's own unrotated frame):
  *   hole = (pocket inset by hiddenMargin) ∩ (access rect centred on the ANCHOR)
@@ -43,6 +62,7 @@ import type {
   Warning,
 } from '../geometry/contract';
 import {
+  containmentMargin,
   coreWorld,
   insetCore,
   offsetPlaced,
@@ -71,6 +91,7 @@ export const WARNING_CODES = {
   openingDeep: 'opening-deep',
   cavityLow: 'cavity-low',
   frontRaised: 'front-raised',
+  edgeReduced: 'edge-reduced',
 } as const;
 
 export const DEFAULT_LIMITS: StyleLimits = { minFrame: 0, minFrontZ: 0, maxEdgeR: Infinity };
@@ -141,8 +162,8 @@ function solveSeparation(gap: (s: number) => number, target: number): number {
   return hi;
 }
 
-/** Spread pockets apart along grid axes until every same-row/column pair keeps minWall. */
-function spreadPockets(drafts: Draft[], minWall: number): void {
+/** Spread pockets apart along grid axes until every same-row/column pair keeps its target gap. */
+function spreadPockets(drafts: Draft[], target: (a: Draft, b: Draft) => number): void {
   for (let iter = 0; iter < 200; iter++) {
     let moved = 0;
     for (let i = 0; i < drafts.length; i++) {
@@ -170,7 +191,7 @@ function spreadPockets(drafts: Draft[], minWall: number): void {
               shifted(pp, axis[0] * t * posShare, axis[1] * t * posShare),
               shifted(pn, -axis[0] * t * negShare, -axis[1] * t * negShare),
             ),
-          minWall,
+          target(pos, neg),
         );
         if (s <= 0) continue;
         pos.spread = [pos.spread[0] + axis[0] * s * posShare, pos.spread[1] + axis[1] * s * posShare];
@@ -298,6 +319,14 @@ function growToContain(hw: number, hh: number, R: number, p: Placed): [number, n
   const b = placedBounds(p);
   hw = Math.max(hw, Math.abs(b.minX), Math.abs(b.maxX));
   hh = Math.max(hh, Math.abs(b.minY), Math.abs(b.maxY));
+  return growCorners(hw, hh, R, p);
+}
+
+/**
+ * Corner part of growToContain: grow hw and hh by the same amount until `p`'s rounded corners
+ * fit the outline's corner arcs (`p` is assumed to fit the bounding box already).
+ */
+function growCorners(hw: number, hh: number, R: number, p: Placed): [number, number] {
   const { r } = shapeCore(p.shape);
   if (r >= R) return [hw, hh]; // bounding-box containment is sufficient
   const rho = R - r;
@@ -319,6 +348,25 @@ function growToContain(hw: number, hh: number, R: number, p: Placed): [number, n
 }
 
 const ceil2 = (n: number) => Math.ceil(n * 100 - 1e-6) / 100;
+
+/** Edge allowances of a style (see StyleLimits); passthroughs get none (plain cut). */
+export function edgeAllowances(limits: StyleLimits): { opening: number; pocket: number } {
+  const opening = Math.max(0, limits.edgeAllowance ?? 0);
+  return { opening, pocket: Math.max(0, limits.pocketEdgeAllowance ?? opening) };
+}
+
+type Outline = Pick<CoverFrame['outer'], 'w' | 'h' | 'cx' | 'cy' | 'cornerR'>;
+
+/**
+ * Air gap (mm) between a finger notch's backing (the notch + minWall, see features/pocket.ts) and
+ * the skirt: how far the backing lies inside the cavity outline (outer inset by skirtT). ≤ 0
+ * means the backing reaches the skirt and merges into it.
+ */
+export function backingGap(outer: Outline, skirtT: number, backing: Placed): number {
+  const { w, h, cx, cy, cornerR } = outer;
+  const cav = offsetPlaced({ shape: { kind: 'roundedRect', w, h, r: cornerR }, x: cx, y: cy, rotDeg: 0 }, -skirtT);
+  return containmentMargin(backing, cav);
+}
 
 /**
  * Resolve a validated config into concrete geometry inputs.
@@ -378,7 +426,10 @@ export function resolveLayout(config: CoverConfig, style?: { limits: StyleLimits
   }
 
   // 3. Spreading -------------------------------------------------------------------
-  spreadPockets(drafts, cover.minWall);
+  const allow = edgeAllowances(limits);
+  const allowOf = (d: Draft) => (d.kind === 'pocket' ? allow.pocket : d.module.role === 'outlet' ? allow.opening : 0);
+  const targetGap = (a: Draft, b: Draft) => cover.minWall + allowOf(a) + allowOf(b);
+  spreadPockets(drafts, targetGap);
   for (const d of drafts) {
     const dist = Math.hypot(d.spread[0], d.spread[1]);
     if (d.kind === 'pocket' && dist > 1e-3) {
@@ -388,7 +439,10 @@ export function resolveLayout(config: CoverConfig, style?: { limits: StyleLimits
         code: WARNING_CODES.pocketSpread,
         severity: 'info',
         featureId: d.id,
-        message: `Pocket ${d.id} moved ${fmt(dist)} mm ${dir} to keep a ${fmt(cover.minWall)} mm wall to its neighbour.`,
+        message:
+          allow.opening + allow.pocket > 0
+            ? `Pocket ${d.id} moved ${fmt(dist)} mm ${dir} to keep a ${fmt(cover.minWall)} mm wall (plus room for this style's edges) to its neighbour.`
+            : `Pocket ${d.id} moved ${fmt(dist)} mm ${dir} to keep a ${fmt(cover.minWall)} mm wall to its neighbour.`,
       });
     }
   }
@@ -401,6 +455,14 @@ export function resolveLayout(config: CoverConfig, style?: { limits: StyleLimits
           severity: 'error',
           featureId: drafts[i].id,
           message: `${drafts[i].id} and ${drafts[j].id} are only ${fmt(Math.max(0, gap))} mm apart (minimum wall ${fmt(cover.minWall)} mm).`,
+        });
+      } else if (gap < targetGap(drafts[i], drafts[j]) - 1e-3) {
+        // Structurally fine (≥ minWall), but the style's edges between them have to shrink.
+        warnings.push({
+          code: WARNING_CODES.edgeReduced,
+          severity: 'info',
+          featureId: drafts[i].id,
+          message: `${drafts[i].id} and ${drafts[j].id} are ${fmt(gap)} mm apart, less than the ${fmt(targetGap(drafts[i], drafts[j]))} mm this style's edges need: the edges between them shrink (or the wall at the face gets thinner).`,
         });
       }
     }
@@ -457,18 +519,51 @@ export function resolveLayout(config: CoverConfig, style?: { limits: StyleLimits
     };
   });
 
-  // 5. Outer size ---------------------------------------------------------------------
-  const plateExpand = cover.clearance + Math.max(cover.skirtT, limits.minFrame);
-  const cornerR = plate.cornerR + plateExpand;
-  let hw = plate.w / 2 + plateExpand;
-  let hh = plate.h / 2 + plateExpand;
-  const featureMargin = Math.max(cover.minWall + cover.margin, limits.minFrame);
-  const mustContain: Placed[] = [];
+  // 5. Outer size (see the file header) -----------------------------------------------
+  const plateZone: Placed = {
+    shape: { kind: 'roundedRect', w: plate.w + 2 * cover.clearance, h: plate.h + 2 * cover.clearance, r: plate.cornerR + cover.clearance },
+    x: 0,
+    y: 0,
+    rotDeg: 0,
+  };
+  const rp = shapeCore(plateZone.shape).r;
+  let zClear = plate.depth + cover.clearance;
+  for (const f of features) if (f.kind === 'pocket') zClear = Math.max(zClear, f.floorZ - floorT);
+  const dropBudget = frontZ - zClear - cover.skinT - cover.skirtT;
+  const plateFrame = Math.max(cover.skirtT, limits.edgeInset ? Math.max(0, limits.edgeInset(dropBudget)) : 0);
+  const plateContent = offsetPlaced(plateZone, plateFrame);
+  const contentBox = placedBounds(plateContent);
+  // R ≥ rp + skirtT keeps the skirt ≥ skirtT at the corners; R ≤ the content's half extents keeps
+  // the rounded rect well formed while it grows (it only grows, so R stays ≤ half the side).
+  const cornerR = Math.min(
+    Math.max(limits.cornerR ?? 0, rp + cover.skirtT),
+    Math.min(contentBox.maxX - contentBox.minX, contentBox.maxY - contentBox.minY) / 2,
+  );
+  let [hw, hh] = growToContain(0, 0, cornerR, plateContent);
+  // Where the plate's corner is tangent to the cavity's, the meshed arcs (chords inside the true
+  // arc) would cut into the plate box: leave the largest chord error of the cavity's corner arc
+  // at preview quality (10° segments, see kit/init.ts) as extra room in the corners only.
+  const chordTol = Math.max(0, cornerR - cover.skirtT) * (1 - Math.cos((5 * Math.PI) / 180)) + 0.01;
+  [hw, hh] = growCorners(hw, hh, cornerR, offsetPlaced(plateContent, chordTol));
+  const baseMargin = Math.max(cover.minWall + cover.margin, limits.minFrame);
   for (const f of features) {
-    mustContain.push(offsetPlaced(f.placed, featureMargin));
-    if (f.kind === 'pocket' && f.notch) mustContain.push(offsetPlaced(f.notch, cover.minWall));
+    const a = f.kind === 'pocket' ? allow.pocket : f.role === 'outlet' ? allow.opening : 0;
+    [hw, hh] = growToContain(hw, hh, cornerR, offsetPlaced(f.placed, baseMargin + a));
   }
-  for (const p of mustContain) [hw, hh] = growToContain(hw, hh, cornerR, p);
+  const backings: Placed[] = [];
+  for (const f of features) if (f.kind === 'pocket' && f.notch) backings.push(offsetPlaced(f.notch, cover.minWall));
+  for (const b of backings) [hw, hh] = growToContain(hw, hh, cornerR, b);
+  // No thin air slot between a notch backing and the skirt: either it reaches the skirt, or the
+  // cover grows until the gap is minWall. Growing only widens gaps, so this settles in a few passes.
+  for (let pass = 0; pass <= backings.length; pass++) {
+    const outer = { w: 2 * hw, h: 2 * hh, cx: 0, cy: 0, cornerR };
+    const slots = backings.filter((b) => {
+      const g = backingGap(outer, cover.skirtT, b);
+      return g > 1e-6 && g < cover.minWall - 1e-6;
+    });
+    if (slots.length === 0) break;
+    for (const b of slots) [hw, hh] = growToContain(hw, hh, cornerR, offsetPlaced(b, cover.skirtT + cover.minWall));
+  }
   const autoW = ceil2(2 * hw);
   const autoH = ceil2(2 * hh);
   let w = autoW;
@@ -510,7 +605,7 @@ export function resolveLayout(config: CoverConfig, style?: { limits: StyleLimits
   }
 
   return {
-    outer: { w, h, cx: 0, cy: 0, cornerR, autoW, autoH },
+    outer: { w, h, cx: 0, cy: 0, cornerR: Math.min(cornerR, w / 2, h / 2), autoW, autoH },
     plate: { w: plate.w, h: plate.h, protrusion: plate.depth, cornerR: plate.cornerR, clearance: cover.clearance },
     frontZ,
     skinT: cover.skinT,

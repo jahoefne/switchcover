@@ -1,7 +1,7 @@
 /**
- * "box" — trivial placeholder style so the pipeline runs end to end in Phase 0.
- * Rounded-rect hull body with sharp edges and a flat face at frontZ. WP1's "minimal"
- * style is the real reference implementation.
+ * "box" — the smallest possible style: a rounded-rect hull body with sharp edges and a flat
+ * face at frontZ, sharp cut-outs. Kept as the simplest example of the CoverStyle interface
+ * (and for tests); "minimal" is the reference implementation.
  */
 import { z } from 'zod';
 import type { CoverStyle } from '../../geometry/contract';
@@ -12,8 +12,8 @@ const params = z.object({});
 export const boxStyle: CoverStyle<typeof params> = {
   id: 'box',
   version: 1,
-  label: 'Box (placeholder)',
-  description: 'Plain rounded box with sharp edges. Placeholder used until the real styles land.',
+  label: 'Plain box (sharp edges)',
+  description: 'Plain rounded box with sharp edges and sharp cut-outs — the simplest style, handy as a starting point for your own.',
   params,
   printOrientation: 'faceDown',
   printHint: 'Print face down on the bed; supports only inside the pockets if your slicer asks.',

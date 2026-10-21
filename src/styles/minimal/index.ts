@@ -6,11 +6,11 @@
  *   z = 0 (full outline) · z = frontZ − chamfer (full outline) · z = frontZ (inset by chamfer).
  */
 import { z } from 'zod';
-import type { CoverFrame, CoverStyle, Placed, StyleLimits } from '../../geometry/contract';
+import type { CoverFrame, CoverStyle, EdgeProfile, Placed, StyleLimits } from '../../geometry/contract';
 import { outerPlaced } from '../../layout/resolve';
 
 const params = z.object({
-  /** Corner radius of the cover outline (mm). Larger radii grow the frame so the skirt stays intact. */
+  /** Corner radius of the cover outline (mm). Large radii grow the frame just enough for the plate to fit the cavity's corner. */
   cornerR: z.number().min(0).max(40).default(4),
   /** 45° chamfer around the top edge (mm). */
   chamfer: z.number().min(0).max(3).default(1),
@@ -23,13 +23,13 @@ const MAX_CHAMFER = 3;
 /** Material kept (mm, measured at 45°) between the chamfer and the cavity's top outer edge. */
 const CHAMFER_KEEP = 0.8;
 
-/**
- * Frame width a corner radius needs: the resolver's outline corner radius is
- * plate.cornerR + clearance + max(skirtT, minFrame), so asking for this minFrame keeps the
- * body's corners (radius cornerR) concentric-or-tighter than the cavity's.
- */
-function minFrameFor(p: MinimalParams, plate: CoverFrame['plate']): number {
-  return Math.max(0, p.cornerR - plate.cornerR - plate.clearance);
+/** Opening (outlet) and pocket rim chamfers (mm). */
+const OPENING_CHAMFER = 1;
+const POCKET_CHAMFER = 0.6;
+
+/** The edge profiles (constant: the resolver leaves room for them, see limits). */
+export function minimalFullEdges(): { opening: EdgeProfile; pocket: EdgeProfile } {
+  return { opening: { kind: 'chamfer', size: OPENING_CHAMFER }, pocket: { kind: 'chamfer', size: POCKET_CHAMFER } };
 }
 
 /** Outer outline with the style's corner radius (never rounder than the frame's own outline). */
@@ -53,13 +53,21 @@ export const minimalStyle: CoverStyle<typeof params> = {
   params,
   ui: {
     cornerR: { label: 'Corner radius', min: 0, max: 40, step: 0.5, unit: 'mm' },
-    chamfer: { label: 'Top edge chamfer', min: 0, max: MAX_CHAMFER, step: 0.1, unit: 'mm' },
+    chamfer: { label: 'Top edge chamfer', min: 0, max: MAX_CHAMFER, step: 0.1, unit: 'mm', clampTo: 'maxEdgeR' },
   },
   printOrientation: 'faceDown',
   printHint:
     'Print face down: the flat face gives a clean finish and the pockets need no support. ' +
     'Enable supports for the pocket floors (bridges) if your printer bridges poorly.',
-  limits: (p, plate): StyleLimits => ({ minFrame: minFrameFor(p, plate), minFrontZ: 0, maxEdgeR: MAX_CHAMFER }),
+  limits: (p): StyleLimits => ({
+    minFrame: 0,
+    minFrontZ: 0,
+    maxEdgeR: MAX_CHAMFER,
+    // Keep minWall between the chamfered cut-outs at the face, not just below it.
+    edgeAllowance: OPENING_CHAMFER,
+    pocketEdgeAllowance: POCKET_CHAMFER,
+    cornerR: p.cornerR,
+  }),
   surfaceZ: (c) => c.frame.frontZ,
   outerBody: ({ frame, kit, params: p }) => {
     const o = outline(frame, p);
@@ -69,6 +77,6 @@ export const minimalStyle: CoverStyle<typeof params> = {
     if (c <= 1e-6) return kit.hull([...kit.ring(o, 0, 0, n), ...kit.ring(o, 0, top, n)]);
     return kit.hull([...kit.ring(o, 0, 0, n), ...kit.ring(o, 0, top - c, n), ...kit.ring(o, c, top, n)]);
   },
-  openingEdge: () => ({ kind: 'chamfer', size: 1 }),
-  pocketEdge: () => ({ kind: 'chamfer', size: 0.6 }),
+  openingEdge: () => minimalFullEdges().opening,
+  pocketEdge: () => minimalFullEdges().pocket,
 };

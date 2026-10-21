@@ -12,7 +12,7 @@ import { z } from 'zod';
 import type { CoverFrame, CoverStyle, EdgeProfile, Placed, StyleCtx, Vec2 } from '../../geometry/contract';
 import { OVERSHOOT } from '../../geometry/kit/kit';
 import { offsetPlaced } from '../../geometry/shape2d';
-import { bodyPlaced, cornerFrame, edgeRoom } from '../common/frame';
+import { availableEdgeRoom, bodyPlaced, type EdgeWants } from '../common/frame';
 import { NO_WALLS, offsetProfile, profileRings, shellFill, type Walls } from '../common/profile';
 
 const DEG = Math.PI / 180;
@@ -30,7 +30,6 @@ const POCKET_CHAMFER = 1;
 const params = z.object({
   bevelW: z.number().min(3).max(15).default(7),
   bevelAngleDeg: z.number().min(25).max(60).default(45),
-  /** Boolean: no `ui` entry (the contract's ui metadata is numeric). */
   groove: z.boolean().default(true),
   grooveW: z.number().min(0.6).max(3).default(1),
   grooveD: z.number().min(0.3).max(2).default(0.8),
@@ -73,6 +72,24 @@ function shapeOf(frame: CoverFrame, p: FacetedParams): Shape {
   };
 }
 
+/** The full-size edge profiles (what the style draws when there is room; see availableEdgeRoom). */
+export function facetedFullEdges(): { opening: EdgeProfile; pocket: EdgeProfile } {
+  return { opening: { kind: 'chamfer', size: OPENING_CHAMFER }, pocket: { kind: 'chamfer', size: POCKET_CHAMFER } };
+}
+
+const WANTS: EdgeWants = { opening: OPENING_CHAMFER, pocket: POCKET_CHAMFER };
+
+/**
+ * Inverse of the bevel's drop below the face: the inset beyond which a bevel of width w at
+ * angle A is at most `drop` below frontZ (drop(d) = (w − d)·tan A for d ≤ w). Uses the raw
+ * params; the drop the body actually uses is clamped to frontZ − 1, i.e. never deeper.
+ */
+export function bevelInset(w: number, angleDeg: number, drop: number): number {
+  if (!(w > 0)) return 0;
+  const t = Math.tan(angleDeg * DEG);
+  return Math.min(w, Math.max(0, w - Math.max(0, drop) / t));
+}
+
 const chainOf = (frame: CoverFrame, s: Shape): Vec2[] => [
   [0, 0],
   [0, s.zFoot],
@@ -100,6 +117,7 @@ export const facetedStyle: CoverStyle<typeof params> = {
   ui: {
     bevelW: { label: 'Bevel width', min: 3, max: 15, step: 0.5, unit: 'mm' },
     bevelAngleDeg: { label: 'Bevel angle', min: 25, max: 60, step: 1, unit: '°' },
+    groove: { kind: 'boolean', label: 'Shadow groove' },
     grooveW: { label: 'Groove width', min: 0.6, max: 3, step: 0.1, unit: 'mm' },
     grooveD: { label: 'Groove depth', min: 0.3, max: 2, step: 0.1, unit: 'mm' },
     cornerR: { label: 'Corner radius', min: 0, max: 20, step: 0.5, unit: 'mm' },
@@ -107,12 +125,18 @@ export const facetedStyle: CoverStyle<typeof params> = {
   printOrientation: 'faceDown',
   printHint:
     'Print face down. Bevels of 45° and steeper print cleanly; shallower bevels overhang and need supports along the outer edge. Add supports inside the pockets (their floors bridge).',
-  limits: (p, plate) => ({
+  limits: (p) => ({
     // Features stay clear of the bevel and the groove (constant, so toggling the groove keeps the size).
-    minFrame: Math.max(p.bevelW + p.grooveW + 3, cornerFrame(p.cornerR, plate)),
+    minFrame: p.bevelW + p.grooveW + 3,
     minFrontZ: p.bevelW * Math.tan(p.bevelAngleDeg * DEG) + MIN_SIDE,
     // Edges are mitred, not rounded.
     maxEdgeR: 0,
+    // Full-size 3 mm socket chamfer and 1 mm pocket chamfer (the resolver spaces features by them).
+    edgeAllowance: OPENING_CHAMFER,
+    pocketEdgeAllowance: POCKET_CHAMFER,
+    cornerR: p.cornerR,
+    // The plate stays under the part of the bevel that is high enough.
+    edgeInset: (drop) => bevelInset(p.bevelW, p.bevelAngleDeg, drop),
   }),
   surfaceZ: ({ frame }) => frame.frontZ,
   outerBody: (c) => facetedBody(c, NO_WALLS),
@@ -133,12 +157,13 @@ export const facetedStyle: CoverStyle<typeof params> = {
     }
     return { ...(add ? { add } : {}), ...(subtract ? { subtract } : {}) };
   },
+  // Shrink to fit is a safety net (dx/dy, manual layouts): the resolver leaves room for full size.
   openingEdge: ({ frame, params: p }, f): EdgeProfile => ({
     kind: 'chamfer',
-    size: Math.min(OPENING_CHAMFER, edgeRoom(frame, f, shapeOf(frame, p).plateau)),
+    size: Math.min(OPENING_CHAMFER, availableEdgeRoom(frame, f, shapeOf(frame, p).plateau, WANTS)),
   }),
   pocketEdge: ({ frame, params: p }, f): EdgeProfile => ({
     kind: 'chamfer',
-    size: Math.min(POCKET_CHAMFER, edgeRoom(frame, f, shapeOf(frame, p).plateau)),
+    size: Math.min(POCKET_CHAMFER, availableEdgeRoom(frame, f, shapeOf(frame, p).plateau, WANTS)),
   }),
 };
