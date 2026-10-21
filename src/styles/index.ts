@@ -7,6 +7,7 @@ import type { CoverStyle, Warning } from '../geometry/contract';
 import { boxStyle } from './box';
 import { facetedStyle } from './faceted';
 import { organicStyle } from './organic';
+import { steppedStyle } from './stepped';
 
 /**
  * A registered style with its params erased to a plain record. (Methods are bivariant in
@@ -18,6 +19,7 @@ const STYLES: readonly AnyCoverStyle[] = [
   boxStyle,
   organicStyle,
   facetedStyle,
+  steppedStyle,
 ];
 
 export const DEFAULT_STYLE_ID = 'box';

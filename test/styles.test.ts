@@ -17,6 +17,7 @@ import { offsetProfile, type Walls } from '../src/styles/common/profile';
 import { domeEnvelope } from '../src/styles/organic/dome';
 import { facetedBody } from '../src/styles/faceted';
 import { organicBody } from '../src/styles/organic';
+import { steppedBody } from '../src/styles/stepped';
 import { getKit } from './helpers/manifold';
 
 type Params = Record<string, unknown>;
@@ -66,6 +67,20 @@ const SPECS: Spec[] = [
         bodyPlaced(frame, p.cornerR as number),
         -((p.bevelW as number) + (p.groove ? 1.5 + (p.grooveW as number) : 0)),
       ),
+  },
+  {
+    id: 'stepped',
+    defaults: { tiers: 2, stepH: 2.5, stepInset: 5, cornerR: 6 },
+    orientation: 'faceUp',
+    body: steppedBody as unknown as BodyFn,
+    variants: [{}, { tiers: 3 }],
+    extremes: [
+      { tiers: 3, stepH: 5, stepInset: 12, cornerR: 20 },
+      { tiers: 3, stepH: 1, stepInset: 2, cornerR: 0 },
+      { tiers: 2, stepH: 5, stepInset: 2, cornerR: 3 },
+    ],
+    plateau: (frame, p) =>
+      offsetPlaced(bodyPlaced(frame, p.cornerR as number), -((p.tiers as number) - 1) * (p.stepInset as number)),
   },
 ];
 
@@ -329,11 +344,12 @@ describe.each(SPECS.map((s) => [s.id, s] as const))('%s style', (id, spec) => {
       const inner = spec.body(ctx, { side: 0.9 * frame.skirtT, top: 0.9 * frame.skinT });
       const missing = body.subtract(inner).subtract(shell).volume();
       expect(missing, 'wall material missing under the styled edge').toBeLessThan(0.5);
-      // the plate (+ clearance) stays clear
+      // the plate + clearance and the rocker gap above it stay clear
+      const c = cfg.cover.clearance;
       const plateBox = kit.prism(
-        { shape: { kind: 'roundedRect', w: cfg.plate.w, h: cfg.plate.h, r: cfg.plate.cornerR }, x: 0, y: 0, rotDeg: 0 },
+        { shape: { kind: 'roundedRect', w: cfg.plate.w + 2 * c, h: cfg.plate.h + 2 * c, r: cfg.plate.cornerR + c }, x: 0, y: 0, rotDeg: 0 },
         0,
-        cfg.plate.depth,
+        cfg.plate.depth + cfg.cover.rockerGap,
       );
       expect(plateBox.intersect(shell).volume()).toBeLessThan(1e-6);
       if (dec.subtract) {

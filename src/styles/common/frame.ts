@@ -31,7 +31,18 @@ export function cornerFrame(cornerR: number, plate: CoverFrame['plate']): number
   return cornerR - plate.cornerR - plate.clearance;
 }
 
-/** The plate grown by its clearance (the zone the cover must never fill), centred on the origin. */
+/**
+ * Top of the space the cover must leave free over the plate: the plate + clearance, and the
+ * rocker gap below every pocket floor (floorZ − floorT = plate depth + rockerGap for the
+ * deepest pocket; see the resolver's height chain).
+ */
+export function plateClearZ(frame: CoverFrame): number {
+  let z = frame.plate.protrusion + frame.plate.clearance;
+  for (const f of frame.features) if (f.kind === 'pocket') z = Math.max(z, f.floorZ - frame.floorT);
+  return z;
+}
+
+/** The plate grown by its clearance (in plan; see plateClearZ for its height), centred on the origin. */
 export function plateZone(plate: CoverFrame['plate']): Placed {
   const c = plate.clearance;
   return {

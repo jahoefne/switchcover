@@ -17,7 +17,7 @@ import type { Manifold } from 'manifold-3d';
 import type { CoverFrame, Kit, Placed, Vec2, Vec3 } from '../../geometry/contract';
 import { OVERSHOOT } from '../../geometry/kit/kit';
 import { outerPlaced } from '../../layout/resolve';
-import { plateZone } from './frame';
+import { plateClearZ, plateZone } from './frame';
 
 export interface Walls {
   /** Thickness behind a vertical face. */
@@ -105,7 +105,7 @@ export type BodyBuilder = (walls: Walls) => Manifold;
 /**
  * Material the straight cavity prism wrongly removes under the styled edges (see file header):
  *   body ∩ (cavity prism grown by FILL_OVERLAP, z ∈ [zFrom, frontZ − skinT])
- *   − (plate + clearance zone) − (body offset inward by skirtT / skinT).
+ *   − (plate + clearance, up to the rocker gap: plateClearZ) − (body offset inward by skirtT / skinT).
  * Where the prism pierces the skin, the fill reaches the outer surface exactly (bounded by the
  * same body), so the union closes the breach without a step.
  * `zFrom` is the lowest height at which the styled inner surface can leave the cavity wall.
@@ -117,9 +117,9 @@ export function shellFill(kit: Kit, frame: CoverFrame, build: BodyBuilder, zFrom
   const z0 = Math.max(0, zFrom - FILL_OVERLAP);
   if (!(z1 > z0 + EPS)) return undefined;
   const side = Math.max(skirtT - FILL_OVERLAP, skirtT / 2);
-  const band = kit
-    .prism(outerPlaced(frame, side), z0, z1)
-    .subtract(kit.prism(plateZone(frame.plate), z0 - OVERSHOOT, z1 + OVERSHOOT));
+  let band = kit.prism(outerPlaced(frame, side), z0, z1);
+  const zClear = Math.min(plateClearZ(frame), z1 + OVERSHOOT);
+  if (zClear > z0) band = band.subtract(kit.prism(plateZone(frame.plate), z0 - OVERSHOOT, zClear));
   const fill = build(NO_WALLS)
     .intersect(band)
     .subtract(build({ side: skirtT, top: skinT }));
