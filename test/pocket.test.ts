@@ -1,8 +1,8 @@
 /**
  * WP5 — Bilresa orientation: the flat face of the reference STL is the FRONT, the rounded end the
  * BACK that rests on the pocket floor. Nested pocket (void + well follow the R8 back fillet),
- * glue ledges + one bridge access hole, Ø14 finger notch down to floorZ + 2 bridged to the skirt,
- * ghost placement, and the exported STLs.
+ * glue ledges + one bridge access hole, Ø14 finger notch down to floorZ + 2 bridged to the skirt
+ * (off by default; the notch tests switch it on), ghost placement, and the exported STLs.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { ManifoldToplevel } from 'manifold-3d';
@@ -83,9 +83,16 @@ describe('ghost placement (viewer) = seated Bilresa (tests)', () => {
 describe('nested pocket (ch-sd-1x1, minimal)', () => {
   let b: CoverBuild;
   let f: PocketFeature;
+  /** The same cover with the finger notch switched on (it is off by default). */
+  let bn: CoverBuild;
+  let fn: PocketFeature;
   beforeAll(() => {
     b = buildCover(kit, presetConfig('ch-sd-1x1'));
     f = pocketOf(b);
+    const c = presetConfig('ch-sd-1x1');
+    c.bilresa.notch.enabled = true;
+    bn = buildCover(kit, c);
+    fn = pocketOf(bn);
   });
 
   it('lofts the fillet finely enough (chord error < 0.05 mm)', () => {
@@ -102,14 +109,18 @@ describe('nested pocket (ch-sd-1x1, minimal)', () => {
         const z = topOfIntersection(b.manifold, column(kit, x, y, -1, top));
         expect(Math.abs(z - filletTopAt(f, u + COLUMN / 2)), `u=${u}`).toBeLessThanOrEqual(0.1);
       }
-      // along (u = 0) towards the end without the notch: flat floor, then the fillet
+      // along (u = 0) towards both ends (no notch by default), beyond the strip indent (|v| ≤ 26.2):
+      // the fillet
+      expect(f.notch).toBeUndefined();
       const half = 35.3;
-      for (const v of [28.5, 30, 32, 34]) {
-        const [x, y] = toWorld(f.placed, [0, -Math.sign(f.notch!.y - f.placed.y) * v]);
-        const z = topOfIntersection(b.manifold, column(kit, x, y, -1, top));
-        const inset = half - (v + COLUMN / 2);
-        const want = f.floorZ + f.backFilletR - Math.sqrt(f.backFilletR ** 2 - (f.backFilletR - inset) ** 2);
-        expect(Math.abs(z - want), `v=${v}`).toBeLessThanOrEqual(0.1);
+      for (const dir of [-1, 1]) {
+        for (const v of [28.5, 30, 32, 34]) {
+          const [x, y] = toWorld(f.placed, [0, dir * v]);
+          const z = topOfIntersection(b.manifold, column(kit, x, y, -1, top));
+          const inset = half - (v + COLUMN / 2);
+          const want = f.floorZ + f.backFilletR - Math.sqrt(f.backFilletR ** 2 - (f.backFilletR - inset) ** 2);
+          expect(Math.abs(z - want), `v=${dir * v}`).toBeLessThanOrEqual(0.1);
+        }
       }
       return null;
     });
@@ -134,9 +145,12 @@ describe('nested pocket (ch-sd-1x1, minimal)', () => {
   it('the bridge hole cuts the floor and the foot of the fillet wall, ending where the void contains it', () => {
     const [hole] = f.holes;
     const exit = holeExitHeight(f, hole);
-    // 34 mm wide, r 1.5: leaves the wall between ≈ 1.75 mm (straight sides) and its corners' height
+    // 34 × 20, r 1.5: the 20 mm length stays inside the stadium's straight part (|v| ≤ 15), so only
+    // the straight sides set the exit: the void's half width 20.3 − inset must clear the hole's 17
+    // by HOLE_EXIT_MARGIN 0.05 → inset 3.25 → h = 8 − √(8² − 4.75²) ≈ 1.563
     expect(exit).toBeGreaterThan(1.5);
     expect(exit).toBeLessThan(2.6);
+    expect(exit).toBeCloseTo(8 - Math.sqrt(64 - 4.75 ** 2), 6);
     expect(containmentMargin(hole, voidOutlineAt(f, exit))).toBeGreaterThanOrEqual(0.05 - 1e-9);
     expect(containmentMargin(hole, voidOutlineAt(f, exit - 0.05))).toBeLessThan(0.05);
     withScope(() => {
@@ -150,47 +164,56 @@ describe('nested pocket (ch-sd-1x1, minimal)', () => {
     });
   });
 
-  it('the Ø14 notch cuts the fillet wall down to floorZ + 2 at the far end and is blind', () => {
-    const n = f.notch!;
+  it('the Ø14 notch (switched on) cuts the fillet wall down to floorZ + 2 at the far end and is blind', () => {
+    const n = fn.notch!;
     expect(n.shape).toEqual({ kind: 'circle', d: 14 });
-    expect(notchFloor(f)).toBeCloseTo(f.floorZ + NOTCH_FLOOR_LIFT, 9);
-    const dir = Math.sign(n.y - f.placed.y);
+    // on the plate's centre line both ends tie: the lower one
+    expect(n).toMatchObject({ x: 0, y: -35.3 });
+    expect(notchFloor(fn)).toBeCloseTo(fn.floorZ + NOTCH_FLOOR_LIFT, 9);
+    expect(bn.frame.outer).toMatchObject({ w: b.frame.outer.w, h: b.frame.outer.h }); // the notch fits the plate-driven size
+    const dir = Math.sign(n.y - fn.placed.y);
     withScope(() => {
       // inside the pocket outline, beyond the void at h = 2: the notch floor (the fillet would be higher)
-      const [x, y] = toWorld(f.placed, [0, dir * 34]);
-      const z = topOfIntersection(b.manifold, column(kit, x, y, -1, b.frame.frontZ + 5));
-      expect(Math.abs(z - notchFloor(f))).toBeLessThanOrEqual(0.05);
-      expect(filletTopAt({ ...f, placed: { ...f.placed, shape: { kind: 'stadium', w: 70.6, h: 70.6 } } }, 34.15)).toBeGreaterThan(z + 1);
+      const [x, y] = toWorld(fn.placed, [0, dir * 34]);
+      const z = topOfIntersection(bn.manifold, column(kit, x, y, -1, bn.frame.frontZ + 5));
+      expect(Math.abs(z - notchFloor(fn))).toBeLessThanOrEqual(0.05);
+      expect(filletTopAt({ ...fn, placed: { ...fn.placed, shape: { kind: 'stadium', w: 70.6, h: 70.6 } } }, 34.15)).toBeGreaterThan(z + 1);
+      // the default cover (no notch) keeps the fillet there
+      expect(topOfIntersection(b.manifold, column(kit, x, y, -1, b.frame.frontZ + 5))).toBeGreaterThan(z + 1);
       // material under the notch floor all the way across the notch (blind)
       for (const t of [-6, -3, 0, 3, 6]) {
         const [px, py] = [n.x + t, n.y];
-        const m = b.manifold.intersect(column(kit, px, py, -1, b.frame.frontZ + 5, 0.2));
+        const m = bn.manifold.intersect(column(kit, px, py, -1, bn.frame.frontZ + 5, 0.2));
         expect(m.isEmpty(), `t=${t}`).toBe(false);
       }
       return null;
     });
-    expect(b.manifold.genus()).toBe(1);
+    expect(bn.manifold.genus()).toBe(1);
   });
 
-  it('a backing ending 0 … minWall short of the skirt is bridged to it', () => {
-    const backing = offsetPlaced(f.notch!, b.frame.minWall);
-    const gap = backingGap(b.frame.outer, b.frame.skirtT, backing);
+  it('a notch backing ending 0 … minWall short of the skirt is bridged to it', () => {
+    // backing: notch (r 7) + minWall 2 = r 9 at y = −35.3, bottom −44.3; skirt inside at
+    // −48.4 + 2.4 = −46: a 1.7 mm gap
+    const backing = offsetPlaced(fn.notch!, bn.frame.minWall);
+    const gap = backingGap(bn.frame.outer, bn.frame.skirtT, backing);
+    expect(gap).toBeCloseTo(1.7, 6);
     expect(gap).toBeGreaterThan(0);
-    expect(gap).toBeLessThan(b.frame.minWall);
-    const bridge = skirtBridge(b.frame, backing)!;
+    expect(gap).toBeLessThan(bn.frame.minWall);
+    const bridge = skirtBridge(bn.frame, backing)!;
     expect(bridge).not.toBeNull();
     // straight down for the 1×1 (notch at the bottom end)
     expect(bridge.rotDeg).toBeCloseTo(-180, 6);
     withScope(() => {
-      // material between the backing and the skirt, below the face
+      // material between the backing and the skirt, below the face (air in the default cover)
       const y = backing.y - (backing.shape as { d: number }).d / 2 - gap / 2;
-      const m = b.manifold.intersect(column(kit, 0, y, f.floorZ + 0.5, b.frame.frontZ - b.frame.skinT - 0.5, 0.2));
+      const m = bn.manifold.intersect(column(kit, 0, y, fn.floorZ + 0.5, bn.frame.frontZ - bn.frame.skinT - 0.5, 0.2));
       expect(m.isEmpty()).toBe(false);
+      expect(intersectionVolume(b.manifold, column(kit, 0, y, f.floorZ + 0.5, b.frame.frontZ - b.frame.skinT - 0.5, 0.2))).toBeLessThan(1e-9);
       return null;
     });
     // no bridge when there is room (≥ minWall) or when the backing already reaches the skirt
-    expect(skirtBridge({ ...b.frame, outer: { ...b.frame.outer, h: b.frame.outer.h + 10 } }, backing)).toBeNull();
-    expect(skirtBridge({ ...b.frame, outer: { ...b.frame.outer, h: b.frame.outer.h - 4 } }, backing)).toBeNull();
+    expect(skirtBridge({ ...bn.frame, outer: { ...bn.frame.outer, h: bn.frame.outer.h + 10 } }, backing)).toBeNull();
+    expect(skirtBridge({ ...bn.frame, outer: { ...bn.frame.outer, h: bn.frame.outer.h - 4 } }, backing)).toBeNull();
   });
 
   it('outwardDirection points to the nearest boundary', () => {

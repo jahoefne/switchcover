@@ -1,6 +1,7 @@
 /**
  * Integration: every preset × every registered style through the real builder, and the finger-
- * notch backing probe (no thin air slot between the backing and the skirt).
+ * notch backing probe (no thin air slot between the backing and the skirt; the notch is off by
+ * default, so that probe switches it on).
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { listPresets, presetConfig } from '../src/config/presets';
@@ -96,6 +97,7 @@ describe('finger-notch backing vs skirt: merged or ≥ minWall apart, never a th
   it.each(cases)('%s × %s, size %s', (presetId, styleId, size) => {
     withScope(() => {
       const cfg = configFor(presetId, styleId);
+      cfg.bilresa.notch.enabled = true; // off by default
       if (size === 'manual') {
         const auto = buildCover(kit, cfg).frame.outer;
         cfg.cover.size = { w: auto.autoW, h: auto.autoH }; // exactly the automatic minimum

@@ -112,9 +112,10 @@ function styleOf(id: string): AnyCoverStyle {
   return s;
 }
 
-function setup(spec: Spec, presetId: string, variant: Params) {
+function setup(spec: Spec, presetId: string, variant: Params, tweak?: (cfg: CoverConfig) => void) {
   const style = styleOf(spec.id);
   const cfg = presetConfig(presetId);
+  tweak?.(cfg);
   const params = style.params.parse(variant) as Params;
   const frame = resolveLayout(cfg, { limits: style.limits(params, plateOf(cfg)), allowsNotchInEdge: style.allowsNotchInEdge });
   return { style, cfg, params, frame, ctx: { frame, params, kit } as StyleCtx<Params> };
@@ -246,11 +247,18 @@ describe.each(SPECS.map((s) => [s.id, s] as const))('%s style', (id, spec) => {
     }
   });
 
-  const cases = spec.variants.flatMap((v) => PRESET_IDS.map((p) => [p, JSON.stringify(v), v] as const));
-  it.each(cases)('%s %s: outer body, probes, edges, decorations, shell', (presetId, _label, variant) => {
+  // With the finger notch off (the default) and on: the notch is a feature of its own, and the
+  // stepped style's notch breakouts are its only decoration cut.
+  const withNotch = (notch: boolean) => (c: CoverConfig) => {
+    c.bilresa.notch.enabled = notch;
+  };
+  const cases = spec.variants.flatMap((v) =>
+    PRESET_IDS.flatMap((p) => [false, true].map((notch) => [p, JSON.stringify(v), notch ? 'notch on' : 'notch off', v, notch] as const)),
+  );
+  it.each(cases)('%s %s, %s: outer body, probes, edges, decorations, shell', (presetId, _label, _notch, variant, notch) => {
     const before = liveObjectCount();
     withScope(() => {
-      const { style, cfg, params, frame, ctx } = setup(spec, presetId, variant);
+      const { style, cfg, params, frame, ctx } = setup(spec, presetId, variant, withNotch(notch));
       const { w, h, cx, cy } = frame.outer;
       const body = style.outerBody(ctx);
 
@@ -355,10 +363,12 @@ describe.each(SPECS.map((s) => [s.id, s] as const))('%s style', (id, spec) => {
     expect(liveObjectCount()).toBe(before);
   });
 
-  const extremeCases = spec.extremes.flatMap((v) => EXTREME_PRESETS.map((p) => [p, JSON.stringify(v), v] as const));
-  it.each(extremeCases)('%s %s: extreme params stay valid', (presetId, _label, variant) => {
+  const extremeCases = spec.extremes.flatMap((v) =>
+    EXTREME_PRESETS.flatMap((p) => [false, true].map((notch) => [p, JSON.stringify(v), notch ? 'notch on' : 'notch off', v, notch] as const)),
+  );
+  it.each(extremeCases)('%s %s, %s: extreme params stay valid', (presetId, _label, _notch, variant, notch) => {
     withScope(() => {
-      const { style, frame, ctx } = setup(spec, presetId, variant);
+      const { style, frame, ctx } = setup(spec, presetId, variant, withNotch(notch));
       const body = style.outerBody(ctx);
       expect(body.status()).toBe('NoError');
       expect(body.decompose().length).toBe(1);
@@ -432,9 +442,13 @@ describe('organic dome', () => {
     for (const id of ['minimal', 'faceted', 'stepped', 'box']) expect(typeof styleOf(id).printOrientation).toBe('string');
   });
 
-  it('flat face without a dome; both sockets get the full flare (the pocket is spread for it)', () => {
+  it('flat face without a dome; two Ø46 sockets both get the full flare (the pocket is spread for it)', () => {
     withScope(() => {
-      const { style, frame, ctx } = setup(spec, 'ch-sd-1x3v-switch-two-sockets', {});
+      // Ø46 sockets on the 60 mm pitch are 60 − 46 = 14 mm apart = minWall 2 + two full flares
+      // 6 + 6. (The Ø50 default leaves 10 mm: the two flares share it, see SOCKETS_SHARE.)
+      const { style, frame, ctx } = setup(spec, 'ch-sd-1x3v-switch-two-sockets', {}, (c) => {
+        for (const m of c.modules) if (m.role === 'outlet') m.opening = { shape: 'circle', d: 46 };
+      });
       expect(style.surfaceZ(ctx, 0, 0)).toBe(frame.frontZ);
       const outlets = frame.features.filter((f) => f.kind === 'opening');
       const [upper, lower] = [...outlets].sort((a, b) => b.placed.y - a.placed.y);
@@ -452,9 +466,10 @@ describe('organic dome', () => {
       const cfg = presetConfig('ch-sd-1x3v-switch-two-sockets');
       const params = style.params.parse({}) as Params;
       const lim = style.limits(params, plateOf(cfg));
+      // Ø50 sockets on the 60 mm pitch: 60 − 50 = 10 mm apart before the move
       for (const [dy, kind, width] of [
-        [6, 'flare', 3], // 14 − 6 = 8 mm apart: (8 − 2) / 2 each
-        [9.5, 'fillet', 1.25], // 4.5 mm apart: 1.25 each, too narrow for a flare
+        [2, 'flare', 3], // 10 − 2 = 8 mm apart: (8 − 2) / 2 each
+        [5.5, 'fillet', 1.25], // 4.5 mm apart: 1.25 each, too narrow for a flare
       ] as const) {
         cfg.modules[2].dy = dy; // the bottom socket moves up towards the middle one
         const frame = resolveLayout(cfg, { limits: lim, allowsNotchInEdge: style.allowsNotchInEdge });
@@ -480,13 +495,25 @@ describe('organic dome', () => {
 
 /**
  * Where the resolver holds a pocket back so its rocker stays inside the access hole (see
- * spreadPockets): the combo plate's socket edge in the styles with wide socket edges.
+ * spreadPockets): the combo plate. Its pocket (rot 90, 70.6 × 40.6) sits at y = 19 + dy 17 = 36,
+ * where the key centre (y 19) is already on the edge of the 34 mm access hole (36 ± 17), so it
+ * cannot move up at all. Its bottom (36 − 20.3 = 15.7) is 2.7 mm above the Ø50 socket's top
+ * (−12 + 25 = 13): spare wall 2.7 − minWall 2 = 0.7, less than the socket + pocket edges of every
+ * style here (organic 6 + 1.5, faceted 3 + 1, stepped 2 + 0.6), so the socket edge shrinks.
  */
-const ROCKER_HELD = new Set(['organic ch-sd-1x1-combo', 'faceted ch-sd-1x1-combo']);
+const ROCKER_HELD = new Set(['organic ch-sd-1x1-combo', 'faceted ch-sd-1x1-combo', 'stepped ch-sd-1x1-combo']);
+
+/**
+ * Two Ø50 sockets side by side on the 60 mm pitch are 60 − 50 = 10 mm apart, and outlets never
+ * move: the spare wall 10 − minWall 2 = 8 is less than two full organic flares (6 + 6), so the
+ * two share it (availableEdgeRoom: 4 each). Faceted (3 + 3) and stepped (2 + 2) fit.
+ */
+const SOCKETS_SHARE = new Set(['organic ch-sd-1x3v-switch-two-sockets', 'organic ch-sd-2x2']);
 
 describe('full-size edges in every Swiss preset (the resolver leaves room, nothing shrinks)', () => {
   const swiss = PRESET_IDS.filter((id) => id.startsWith('ch-sd-'));
-  const cases = SPECS.flatMap((spec) => swiss.filter((id) => !ROCKER_HELD.has(`${spec.id} ${id}`)).map((id) => [spec.id, id, spec] as const));
+  const reduced = (key: string) => ROCKER_HELD.has(key) || SOCKETS_SHARE.has(key);
+  const cases = SPECS.flatMap((spec) => swiss.filter((id) => !reduced(`${spec.id} ${id}`)).map((id) => [spec.id, id, spec] as const));
 
   it.each([...ROCKER_HELD])('%s: the pocket stops where its rocker would leave the access hole; the socket edge shrinks', (key) => {
     const [styleId, presetId] = key.split(' ');
@@ -509,6 +536,35 @@ describe('full-size edges in every Swiss preset (the resolver leaves room, nothi
     expect(edge).toBeGreaterThanOrEqual(spare / 2 - 1e-6);
     expect(edge).toBeLessThan(edgeWidth(full.opening));
     expect(edge + pocketEdge).toBeLessThanOrEqual(spare + 1e-6);
+  });
+
+  it.each([...SOCKETS_SHARE])('%s: the two sockets 10 mm apart share the wall between them; everything else is full-size', (key) => {
+    const [styleId, presetId] = key.split(' ');
+    const spec = SPECS.find((x) => x.id === styleId)!;
+    const { style, cfg, params, frame, ctx } = setup(spec, presetId, {});
+    const full = spec.full(params);
+    const wants = wantsOf(style.limits(params, plateOf(cfg)));
+    const plateau = spec.plateau(frame, params);
+    expect(frame.warnings.filter((w) => w.severity !== 'info')).toEqual([]);
+    const outlets = frame.features.filter((f) => f.kind === 'opening');
+    expect(outlets).toHaveLength(2);
+    const gap = placedDistance(outlets[0].placed, outlets[1].placed);
+    expect(gap).toBeCloseTo(10, 6);
+    // one edge-reduced note, for the socket pair
+    const notes = frame.warnings.filter((w) => w.code === 'edge-reduced');
+    expect(notes).toHaveLength(1);
+    for (const o of outlets) expect(notes[0].message).toContain(o.id);
+    const spare = gap - frame.minWall;
+    for (const f of frame.features) {
+      if (f.kind === 'opening') {
+        const e = edgeWidth(style.openingEdge(ctx, f));
+        expect(e, `${f.id} opening edge`).toBeCloseTo(spare / 2, 6);
+        expect(e).toBeLessThan(edgeWidth(full.opening));
+      } else {
+        expect(style.pocketEdge?.(ctx, f), `${f.id} pocket edge`).toEqual(full.pocket);
+        expect(availableEdgeRoom(frame, f, plateau, wants)).toBeGreaterThanOrEqual(edgeWidth(full.pocket));
+      }
+    }
   });
 
   it.each(cases)('%s × %s', (_styleId, presetId, spec) => {

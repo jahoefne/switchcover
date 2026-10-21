@@ -5,7 +5,7 @@ Turn dumb Swiss light switches into smart ones without an electrician.
 switchcover is a fully client-side web app that generates printable `.stl` covers for
 existing light-switch plates. A cover is a hollow cap glued to the wall over the old plate.
 Its face carries recessed pockets for IKEA **Bilresa** smart switches (seated back-first and
-held by IKEA's magnetic metal strip), cut-outs for power outlets sharing the plate, and a
+held by IKEA's magnetic metal strip), walled cut-outs for power outlets sharing the plate, and a
 hidden access hole behind each Bilresa so the old switch stays reachable. Pick a preset (Swiss Feller
 STANDARDdue first, DE/EU frames as secondary data), choose a style, tweak parameters,
 preview in 3D, download the STL and share the configuration via the URL.
@@ -19,8 +19,8 @@ Live: <https://jahoefne.github.io/switchcover/>
   and a free `custom` layout (see "Presets" below). Plate size, depth, corner radius and the
   module grid (pitch, and under "Advanced" an offset of the whole grid) are editable.
 - **Modules**: click a grid cell to make it a Bilresa pocket (two-button or scroll wheel,
-  rotation, dx/dy, own pocket depth, finger notch on/off), a socket opening (round, rounded
-  rect or stadium, any size), a passthrough or blank. Pockets that would collide are spread
+  rotation, dx/dy, own pocket depth, finger notch on/off), a socket opening (round Ø50 by
+  default, rounded rect or stadium, any size; see "Socket openings"), a passthrough or blank. Pockets that would collide are spread
   apart automatically (with a note), never so far that the old rocker leaves the pocket's
   access hole (the style's edges between them get narrower instead), and every pocket gets a
   hidden access hole to the old rocker underneath (see "Bilresa pocket and magnet strip").
@@ -44,7 +44,7 @@ Live: <https://jahoefne.github.io/switchcover/>
 |---|---|---|
 | `ch-sd-1x1` | 90 × 90 | one Bilresa |
 | `ch-sd-1x1-combo` | 90 × 90 | switch + Type 13 socket on one plate ("Kleinkombination"), Bilresa lying above the socket |
-| `ch-sd-1x2v-switch-socket` | 90 × 150 | Bilresa on top, Ø46 socket below |
+| `ch-sd-1x2v-switch-socket` | 90 × 150 | Bilresa on top, Ø50 socket below |
 | `ch-sd-2x1h-two-switches` | 150 × 90 | two Bilresa side by side |
 | `ch-sd-1x2v-two-switches` | 90 × 150 | two Bilresa lying (rot 90), one above the other |
 | `ch-sd-1x3v-switch-two-sockets` | 90 × 210 | Bilresa, two sockets |
@@ -57,18 +57,18 @@ Live: <https://jahoefne.github.io/switchcover/>
 socket on ONE 90 × 90 plate (measured): the switch key (≈ 60 × 22 mm) is centred 26 mm below the
 plate's top edge (y = +19 in plate coordinates), the socket recess 57 mm below it (y = −12). The
 preset uses a 1 × 2 grid with pitch Y 31 mm shifted up by 3.5 mm (`grid.offsetY`), so the
-anchors sit exactly there, and a Ø46 opening on the socket. The two-button Bilresa lies
-horizontally (rotation 90°, 70 × 40) above the opening, 15.9 mm above the key (`dy`, the
-smallest that keeps minWall plus the minimal style's chamfers to the opening: pocket centre
-y = 34.9). It does not fit the plate's height, so **the cover grows upwards only** and the
-socket stays near its bottom: 96.8 × 110.2 mm in the minimal style, centred 6.7 mm above the
-plate centre (the plate still sits in the cavity; glue it on as usual). The bridge access hole
-spans y 17.9 … 51.9, so the key centre is inside it, and the gap below the magnet strip
-(y 17.9 … 23.7) lies over the key's upper half: press the old rocker there with a thin tool.
-Styles with wider socket edges (organic, faceted, stepped) push the Bilresa up a little further
-(at most to y = 36, where the key centre would leave the hole; their socket edge gets narrower
-instead) and the cover grows a little taller (organic 101.33 × 117.47, faceted 96.8 × 117.3,
-stepped 96.8 × 112.2, box 96.8 × 109.6 mm).
+anchors sit exactly there, and a Ø50 opening on the socket. The two-button Bilresa lies
+horizontally (rotation 90°, 70 × 40) above the opening, 17 mm above the key (`dy`, pocket centre
+y = 36): the highest it can go with the key centre still inside the 34 mm wide access hole. That
+leaves 2.7 mm of wall to the opening, more than `minWall` but less than the full socket and
+pocket edges need, so every style with edges makes them narrower between the two (a note in the
+checks list) and none moves the Bilresa further. It does not fit the plate's height, so **the
+cover grows upwards only** and the socket stays near its bottom: 96.8 × 111.3 mm in the minimal
+style, centred 7.25 mm above the plate centre (the plate still sits in the cavity; glue it on as
+usual). The bridge access hole spans y 19 … 53, so the key centre lies on its lower edge, and the
+gap below the magnet strip (y 19 … 24.8) lies over the key's upper half: press the old rocker
+there with a thin tool. The other styles: organic 101.33 × 118.8, faceted 96.8 × 119.3, stepped
+96.8 × 112.3, box 96.8 × 110.7 mm.
 
 ## Styles and print orientation
 
@@ -88,10 +88,12 @@ left switch is still on the left once the cover hangs on the wall.
 Face down, a pocket opens onto the bed: its straight wall and the nested fillet wall above it
 lean in gradually and print without support. Only what is left of the pocket floor beside the
 access hole (the strip's glue ledges) bridges across the pocket; enable supports inside the
-pockets if your printer bridges poorly.
+pockets if your printer bridges poorly. Outlet sleeves are straight tubes standing on the face
+and need no support.
 
 Print the test-fit part first, check that the Bilresa seats, that the strip sits on its
-ledges and that the Bilresa comes out with the finger notch, then print the cover.
+ledges and that the Bilresa comes out (with the finger notch, if you switch it on), then print
+the cover.
 
 ## Development
 
@@ -140,9 +142,9 @@ Identical in config, layout, geometry and viewer:
   the union of what the plate (+ clearance + skirt), every feature (+ margins) and every finger
   notch need, so its centre may leave the plate centre. The plate always stays at the origin.
 - Height chain: `frontZ = plate.depth + rockerGap + floorT + pocketDepth`
-  (≈ 12 + 2 + 2.4 + 10 = 26.4 mm), with `floorT ≥ strip.protrusion + print.tolerance + 1.2`.
+  (≈ 12 + 2 + 2.4 + 14 = 30.4 mm), with `floorT ≥ strip.protrusion + print.tolerance + 1.2`.
   The Bilresa's back rests on the floor (`floorZ = frontZ − pocketDepth`), its front stands
-  18.5 − pocketDepth proud of the face (8.5 mm by default).
+  18.5 − pocketDepth proud of the face (4.5 mm by default).
 - Face-down export is a **rotation** of 180° about Y, (x, y, z) → (−x, y, −z), then a
   translation to min z = 0 — never a mirror. Seen from above in the slicer the layout
   therefore looks mirrored; that is correct (the left switch is still on the left when the
@@ -160,35 +162,45 @@ glue-on metal strip (≈ 22 × 51 mm, ≈ 1 mm proud once in place). All of it l
 
 - **Nested pocket.** The Bilresa sits back-first. From the floor up, the pocket wall follows
   its R8 back fillet (+ `pocketClearance`), then runs straight to the face; the default depth
-  10 mm is 8 mm of fillet + 2 mm of straight engagement (minimum 8.5). The well around it
+  14 mm is 8 mm of fillet + 6 mm of straight engagement (minimum 8.5). The well around it
   follows the same profile offset by `minWall`, so the wall is uniform and no material hangs
   uselessly in the cavity.
 - **Magnet strip and glue ledges.** The floor has an indent of strip + 2 · tolerance,
-  protrusion + tolerance deep (22.4 × 51.4 × 1.2 mm by default). Glue the strip onto the two
-  end ledges of that indent (`stripLedge`, ≥ 4 mm each); it spans the access hole between them.
+  protrusion + tolerance deep (22.4 × 52.4 × 1.2 mm by default). Glue the strip onto the two
+  end ledges of that indent (`stripLedge`, 16 mm each by default); it spans the access hole
+  between them.
 - **Access hole.** One hole per pocket, centred on the pocket and oriented with it: as wide as
   `access.w` (34 mm) but never closer than `hiddenMargin` to the pocket outline, as long as the
-  strip minus both ledges, shortened if needed so it stays hidden behind the Bilresa (39 mm by
-  default, so the ledges are ≈ 6 mm). It cuts through the floor and the foot of the fillet
-  wall. The ≈ 6 mm gaps beside the strip are the access: press the old rocker with a thin tool
-  (the checks list notes gaps under 8 mm). The rocker centre must lie inside the hole (error
-  otherwise).
-- **Finger notch.** Ø 14 mm at the pocket's end farthest from the plate centre (ties: the lower
-  end, then the right one, e.g. the +x end of the combo's lying Bilresa), cut from the
-  face down to 2 mm above the floor so a fingertip reaches the Bilresa's rounded edge to lift
-  it out. Its backing is merged into the skirt when it would end less than `minWall` short of it.
-  The organic, faceted and stepped styles let the notch reach into their edge zone (fillet,
-  bevel, tier step) rather than growing the cover for it: the faceted notch runs across the
-  shadow groove and bites into the bevel's foot, the stepped notch opens into the step (a slot
-  of its width where only a thin fin of the top tier would remain), the organic notch's rim
-  touches the start of the fillet. A 1×1 cover therefore keeps its plate-driven size with every
-  style.
+  strip minus both ledges (52 − 2 · 16 = 20 mm by default, so the hole is 34 × 20), shortened if
+  needed so it stays hidden behind the Bilresa. It cuts through the floor and the foot of the
+  fillet wall. The ≈ 6 mm gaps beside the strip are the access: press the old rocker with a
+  thin tool (the checks list notes gaps under 8 mm). The rocker centre must lie inside the hole
+  (error otherwise).
+- **Finger notch.** Off by default (switch it on under "Bilresa & print", or per module). Ø 14 mm
+  at the pocket's end farthest from the plate centre (ties: the lower end, then the right one,
+  e.g. the +x end of the combo's lying Bilresa), cut from the face down to 2 mm above the floor
+  so a fingertip reaches the Bilresa's rounded edge to lift it out. Its backing is merged into
+  the skirt when it would end less than `minWall` short of it. The organic, faceted and
+  stepped styles let the notch reach into their edge zone (fillet, bevel, tier step) rather
+  than growing the cover for it: the faceted notch runs across the shadow groove and bites into
+  the bevel's foot, the stepped notch opens into the step (a slot of its width where only a thin
+  fin of the top tier would remain), the organic notch's rim touches the start of the fillet. A
+  1×1 cover therefore keeps its plate-driven size with every style.
 - **Ghost.** The viewer shows the STL without tilting it: moved to (pocket x, y,
   floorZ + 18.5) and turned with the pocket.
 
 Note: in the STL the strip rim is 52 mm long (with a small flat at one end), while the default
 strip is 51 mm, so the rim's tips touch the indent's ends by ~0.3 mm. If your strip measures
 more than 51 mm, raise the strip length (the test-fit part shows it).
+
+## Socket openings
+
+A Swiss Type 13 socket gets a Ø50 mm opening by default (DE/EU Schuko: Ø50, approximate). Each
+outlet opening has a **sleeve**: an inner wall of `minWall` (2 mm) around the opening that hangs
+from the face into the cavity as deep as the pockets (14 mm by default; the deepest pocket if
+modules override the depth), so the plug goes through a tube instead of a hole in a 3 mm skin.
+Passthroughs stay plain cuts. The checks list warns when the face sits more than 20 mm above the
+plate (plugs may not seat).
 
 ## Adding a style
 

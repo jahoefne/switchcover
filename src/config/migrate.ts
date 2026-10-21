@@ -41,8 +41,9 @@ const sameStrip = (a: Json, b: Record<string, unknown>) =>
 
 /**
  * v1 → v2 (Bilresa orientation rework). Pure data rewrite, before defaults are filled in:
- *  - bilresa.stripMargin (keep-out around a strip island) → bilresa.stripLedge = 4 (the strip
- *    now spans one access hole and rests on two end ledges; the old value has no meaning there);
+ *  - bilresa.stripMargin (keep-out around a strip island) → bilresa.stripLedge = the current
+ *    default, DEFAULT_BILRESA.stripLedge (the strip now spans one access hole and rests on two end
+ *    ledges; the old value has no meaning there);
  *  - bilresa.access {w, h} → {w} (the hole length follows the strip);
  *  - bilresa.strip: the old 44 × 7 placeholder becomes the measured strip (DEFAULT_BILRESA.strip);
  *    any other (user-entered) strip is kept;

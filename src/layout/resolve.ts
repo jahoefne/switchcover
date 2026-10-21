@@ -16,7 +16,8 @@
  *     rocker (anchor) leaves its access hole unless minWall itself needs it: the allowances are
  *     cosmetic, reaching the old switch is not; the edges between the two then shrink
  *     (edge-reduced note).
- *  4. Per-pocket strip, access holes (policy below) and finger notch.
+ *  4. Per-pocket strip, access holes (policy below) and finger notch; per-outlet sleeve bottom
+ *     (sleeveZ = frontZ − the deepest pocket depth).
  *  5. Outer size (auto or manual ≥ auto) and centre; see "Outer size".
  *  6. Warnings.
  *
@@ -50,8 +51,9 @@
  *    stepped, organic) drop minFrame for the notch: minWall + allowance keeps the backing and the
  *    rim edge inside the outline, and the notch's opening may cut into the bevel / fillet / tier
  *    step. A Ø14 notch then fits the plate-driven size of every 1×1 preset with every style;
- *    where a spread pocket's notch still sets the size (faceted switch + socket) the cover grows
- *    by minWall + the rim allowance only, and only on the notch's side.
+ *    where a spread pocket's notch still sets the size (faceted and stepped switch + socket, with
+ *    the notch switched on) the cover grows by minWall + the rim allowance only, and only on the
+ *    notch's side.
  *
  * Access-hole policy (one "bridge" hole per pocket, in the pocket's own unrotated frame):
  *   a rounded rect (corner ACCESS_HOLE_CORNER_R) centred on the POCKET centre,
@@ -142,7 +144,7 @@ export function featureId(col: number, row: number): string {
 export function openingShape(spec: OpeningSpec | undefined, role: 'outlet' | 'passthrough'): Shape2D {
   const fallback = role === 'outlet' ? OUTLET_CH : PASSTHROUGH_DEFAULT;
   const s = spec ?? fallback;
-  const d = s.d ?? fallback.d ?? s.w ?? 46;
+  const d = s.d ?? fallback.d ?? s.w ?? 50;
   const w = s.w ?? fallback.w ?? s.d ?? 50;
   const h = s.h ?? fallback.h ?? s.d ?? 50;
   switch (s.shape) {
@@ -627,7 +629,9 @@ export function resolveLayout(config: CoverConfig, style?: ResolveStyle): CoverF
   const features: ResolvedFeature[] = drafts.map((d): ResolvedFeature => {
     const placed = placedOf(d);
     if (d.kind === 'opening') {
-      return { kind: 'opening', id: d.id, role: d.module.role === 'passthrough' ? 'passthrough' : 'outlet', anchor: d.anchor, placed };
+      if (d.module.role === 'passthrough') return { kind: 'opening', id: d.id, role: 'passthrough', anchor: d.anchor, placed };
+      // The outlet's sleeve reaches as deep as the deepest pocket (its floor top).
+      return { kind: 'opening', id: d.id, role: 'outlet', anchor: d.anchor, placed, sleeveZ: frontZ - maxDepth };
     }
     const [sx, sy] = toWorld(placed, [strip.dx, strip.dy]);
     const stripPlaced: Placed = { shape: stripShapeOf(), x: sx, y: sy, rotDeg: placed.rotDeg };

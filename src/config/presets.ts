@@ -92,22 +92,24 @@ const O: ModuleSpec = { role: 'outlet' };
  * pitchY 31 shifted up by offsetY 3.5 puts the two anchors exactly there: (31/2 + 3.5, −31/2 + 3.5).
  *
  * The two-button Bilresa lies horizontally (rot 90: 70.6 wide × 40.6 tall with clearance) above
- * the Ø46 opening. Its dy is the smallest that clears the opening in the default minimal style:
- *   opening top −12 + 23 = 11; + minWall 2 + minimal's edge allowances (socket chamfer 1, pocket
- *   chamfer 0.6) = 14.6 = pocket bottom; pocket centre 14.6 + 20.3 = 34.9 → dy = 34.9 − 19 = 15.9,
- * so minimal (and box) need no automatic spreading. The pocket does not fit the plate's height
- * (top 34.9 + 20.3 = 55.2 > 45), so the cover grows UPWARDS only (user decision): minimal
- * 96.8 × 110.2 mm centred 6.7 mm above the plate centre (bottom at the plate-driven −48.4, top
- * at pocket top + minWall 2 + margin 4 + chamfer 0.6 = 61.8), the socket stays near the bottom.
+ * the Ø50 opening. The 34 mm wide bridge hole runs across it (y = pocket centre ± 17), so the key
+ * centre (+19) stays inside the hole up to a pocket centre of y = 36: dy = 36 − 19 = 17, the
+ * largest dy the access rule allows. That leaves 36 − 20.3 − (−12 + 25) = 2.7 mm of wall to the
+ * opening: ≥ minWall 2, but less than minWall + minimal's edge allowances (socket chamfer 1, pocket
+ * chamfer 0.6) = 3.6, which would need y = 36.9 and put the key centre outside the hole. So no
+ * style spreads the pocket (resolveLayout holds it where the key centre would leave the hole) and
+ * every style with edges narrows them between the pocket and the socket (edge-reduced note).
+ * The pocket does not fit the plate's height (top 36 + 20.3 = 56.3 > 45), so the cover grows
+ * UPWARDS only (user decision): minimal 96.8 × 111.3 mm centred 7.25 mm above the plate centre
+ * (bottom at the plate-driven −48.4, top at pocket top + minWall 2 + margin 4 + chamfer 0.6 = 62.9),
+ * the socket stays near the bottom.
  *
- * Access: the 34 × 39.12 bridge hole spans y 17.9 … 51.9, so the key centre (+19) is 1.1 mm inside
- * it; the strip indent covers y 23.7 … 46.1, leaving the lower tool gap y 17.9 … 23.7 over the
- * key band (y 8 … 30) and an upper gap y 46.1 … 51.9 above the key. Styles with wider edges
- * (organic, faceted, stepped) spread the pocket up, but never beyond y = 36, where the key centre
- * would leave the hole (resolveLayout); their socket edge shrinks instead (edge-reduced note).
- * The finger notch sits at the pocket's +x end (a horizontal pocket's two ends tie).
+ * Access: the 34 × 20 bridge hole spans y 19 … 53 (x −10 … 10), so the key centre lies on its lower
+ * edge; the strip indent covers y 24.8 … 47.2, leaving the lower tool gap y 19 … 24.8 over the key
+ * band (y 8 … 30) and an upper gap y 47.2 … 53 above the key.
+ * A finger notch, when switched on, sits at the pocket's +x end (a horizontal pocket's two ends tie).
  */
-const COMBO_BILRESA_DY = 15.9;
+const COMBO_BILRESA_DY = 17;
 
 function preset(
   id: string,

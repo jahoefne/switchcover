@@ -94,8 +94,10 @@ export const V1_SWITCH_SOCKET_RAW = {
 
 /**
  * What the 'ch-sd-1x2v-switch-socket' v1 fixture decodes to since config v2 (migrate.ts v1ToV2):
- * stripMargin → stripLedge 4, access {w, h} → {w}, the 44 × 7 strip placeholder → the measured
- * 52 × 22 strip; everything else (incl. the user's pocket depth 9 and notch Ø16) is kept.
+ * stripMargin → stripLedge (the default ledge: 4 mm when this snapshot was taken; the migration
+ * follows DEFAULT_BILRESA.stripLedge, so urlCodec.test.ts substitutes today's), access {w, h} →
+ * {w}, the 44 × 7 strip placeholder → the measured 52 × 22 strip; everything else (incl. the
+ * user's pocket depth 9 and notch Ø16) is kept.
  */
 export const V1_SWITCH_SOCKET_MIGRATED = {
   ...V1_SWITCH_SOCKET_RAW,

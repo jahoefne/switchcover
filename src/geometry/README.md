@@ -50,10 +50,11 @@ cover  = shell − union(cuts + style.decorate().subtract)
 | stripIndent | cut | strip, [floorZ − stripDepth, floorZ + 0.1] |
 | accessHoles | cut | the bridge hole, [min(floor underside, cavity ceiling) − 0.1, floorZ + holeExitHeight + 0.1] (through the floor and the foot of the fillet wall) |
 | notch | add + cut | backing (circle + minWall) from notchFloor − minWall up, bridged to the skirt when 0 … minWall short of it; void [floorZ + 2, face] with the pocket rim edge. Styles with `allowsNotchInEdge` get the notch only minWall + allowance inside the outline (it may cut into their bevel / fillet / tier step; stepped opens it into the step with `notchBreakouts`) |
-| opening | cut | outlet: `style.openingEdge`, passthrough: chamfer 0.6; [cavity ceiling − 0.1, face] + plain through-prism |
+| opening | cut | outlet: `style.openingEdge`, passthrough: chamfer 0.6; [cavity ceiling − 0.1, face] + plain through-prism from [min(sleeveZ, cavity ceiling) − 0.1] |
+| sleeve (outlets) | add | opening outline + minWall, [sleeveZ, face max + 0.1]; sleeveZ = frontZ − deepest pocket depth (the deepest pocket's floorZ), lifted onto a domed face like the pocket floors |
 
-- Adds (wells) are carved out of the cavity instead of unioned onto the body, so they can
-  never poke through a style's face or edge profile, whatever their top.
+- Adds (wells, sleeves) are carved out of the cavity instead of unioned onto the body, so they
+  can never poke through a style's face or edge profile, whatever their top.
 - Everything is placed relative to `style.surfaceZ` at the feature centre. `prepareCover`
   lifts each pocket's `floorZ` by `surfaceZ(centre) − frontZ` (never lowers it); the
   returned frame carries the lifted values, so the viewer's ghosts match the geometry.
@@ -88,8 +89,9 @@ severity-`'error'` warnings (`geometry-*`); the mesh is still returned.
 
 Counting through-holes: the open-bottom shell is a cup (genus 0). Pockets, strip indents
 and notches are blind (floor below, wells / backing around), so they add nothing. Every
-opening and every pocket's (single) bridge access hole that overlaps the cavity footprint
-joins the face side to the wall side and adds exactly one handle. The check is skipped
+opening (an outlet's sleeve is a tube open at its bottom) and every pocket's (single) bridge
+access hole that overlaps the cavity footprint joins the face side to the wall side and adds
+exactly one handle. The check is skipped
 when the resolver reports `feature-overlap` (merged cuts merge holes; already reported).
 
 ## Worker

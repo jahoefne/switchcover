@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { BILRESA_VARIANTS, DEFAULT_BILRESA, DEFAULT_COVER, DEFAULT_PRINT, MIN_POCKET_DEPTH, backFilletInset } from '../src/config/defaults';
+import {
+  BILRESA_VARIANTS,
+  DEFAULT_BILRESA,
+  DEFAULT_COVER,
+  DEFAULT_PRINT,
+  MAX_OPENING_TUNNEL,
+  MIN_POCKET_DEPTH,
+  OUTLET_CH,
+  backFilletInset,
+} from '../src/config/defaults';
 import { V1_STRIP_PLACEHOLDER, migrateConfig } from '../src/config/migrate';
 import { DEFAULT_PRESET_ID, getPreset, listPresets, presetConfig } from '../src/config/presets';
 import { CoverConfigSchema, DEFAULT_CONFIG, cloneConfig } from '../src/config/schema';
@@ -30,17 +39,21 @@ describe('defaults', () => {
     expect(backFilletInset(0, 1)).toBe(0);
   });
 
-  it('uses the decided defaults: 10 mm nested pocket, measured strip on 4 mm ledges, Ø14 notch', () => {
+  it('uses the decided defaults: 14 mm nested pocket, measured strip on 16 mm ledges (34 × 20 hole), Ø14 notch off, Ø50 socket', () => {
     expect(DEFAULT_BILRESA).toEqual({
-      pocketDepth: 10,
+      pocketDepth: 14,
       pocketClearance: 0.3,
       floorT: 2.4,
       hiddenMargin: 3,
-      notch: { enabled: true, d: 14 },
+      notch: { enabled: false, d: 14 },
       access: { w: 34 },
       strip: { shape: 'stadium', l: 52, w: 22, protrusion: 1, dx: 0, dy: 0 },
-      stripLedge: 4,
+      stripLedge: 16,
     });
+    // access hole length = strip length − 2 · ledge
+    expect(DEFAULT_BILRESA.strip.l - 2 * DEFAULT_BILRESA.stripLedge).toBe(20);
+    expect(OUTLET_CH).toEqual({ shape: 'circle', d: 50 });
+    expect(MAX_OPENING_TUNNEL).toBe(20);
     expect(MIN_POCKET_DEPTH).toBe(8.5);
     expect(DEFAULT_COVER).toMatchObject({ skinT: 3, skirtT: 2.4, minWall: 2, clearance: 1, rockerGap: 2, margin: 4 });
     expect(DEFAULT_PRINT.tolerance).toBe(0.2);
@@ -97,7 +110,7 @@ describe('presets', () => {
     expect(roles('ch-sd-1x3v-switch-two-sockets')).toEqual(['bilresa', 'outlet', 'outlet']);
     expect(roles('ch-sd-2x2')).toEqual(['bilresa', 'bilresa', 'outlet', 'outlet']);
     const outlet = getPreset('ch-sd-1x2v-switch-socket')!.config.modules[1];
-    expect(outlet.opening).toEqual({ shape: 'circle', d: 46 });
+    expect(outlet.opening).toEqual({ shape: 'circle', d: 50 });
   });
 
   it('the combo plate: two rows on ONE 90 × 90 plate, grid shifted onto the key and the socket', () => {
@@ -107,8 +120,8 @@ describe('presets', () => {
     expect(moduleAnchor(c.grid, 0, 0)).toEqual([0, 45 - 26]);
     expect(moduleAnchor(c.grid, 0, 1)).toEqual([0, 45 - 57]);
     expect(c.modules).toEqual([
-      { col: 0, row: 0, role: 'bilresa', rot: 90, dx: 0, dy: 15.9, bilresa: { variant: '2button' } },
-      { col: 0, row: 1, role: 'outlet', rot: 0, dx: 0, dy: 0, opening: { shape: 'circle', d: 46 } },
+      { col: 0, row: 0, role: 'bilresa', rot: 90, dx: 0, dy: 17, bilresa: { variant: '2button' } },
+      { col: 0, row: 1, role: 'outlet', rot: 0, dx: 0, dy: 0, opening: { shape: 'circle', d: 50 } },
     ]);
     // right after the plain 1×1 in the list
     const ids = listPresets().map((p) => p.id);
@@ -196,7 +209,7 @@ describe('migrateConfig v1 → v2', () => {
     return c;
   }
 
-  it('stripMargin → stripLedge 4, access {w, h} → {w}, placeholder strip → measured strip; the rest is kept', () => {
+  it("stripMargin → today's default stripLedge, access {w, h} → {w}, placeholder strip → measured strip; the rest is kept", () => {
     const r = migrateConfig(v1Config());
     expect(r.warnings).toEqual([]);
     expect(r.config.v).toBe(2);
@@ -208,15 +221,16 @@ describe('migrateConfig v1 → v2', () => {
       notch: { enabled: true, d: 16 },
       access: { w: 34 },
       strip: DEFAULT_BILRESA.strip,
-      stripLedge: 4,
+      // v1 had no ledges: an old link gets the ledge of today's default (16 mm)
+      stripLedge: DEFAULT_BILRESA.stripLedge,
     });
     expect(r.config.modules).toEqual(presetConfig('ch-sd-2x1h-two-switches').modules);
   });
 
-  it('stripLedge is 4 whatever the old stripMargin was', () => {
+  it("stripLedge is today's default whatever the old stripMargin was", () => {
     const raw = v1Config();
     raw.bilresa.stripMargin = 7;
-    expect(migrateConfig(raw).config.bilresa.stripLedge).toBe(4);
+    expect(migrateConfig(raw).config.bilresa.stripLedge).toBe(DEFAULT_BILRESA.stripLedge);
   });
 
   it('keeps a user-entered strip (and a partial placeholder that differs)', () => {

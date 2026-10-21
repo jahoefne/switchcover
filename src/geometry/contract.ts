@@ -67,6 +67,12 @@
  *    that needs room on one side only moves the centre that way. Everything that builds or draws
  *    the outline uses (cx, cy); the plate (`CoverFrame.plate`, its ghost and collision box) stays
  *    at the origin.
+ *
+ * Outlet sleeve (additive):
+ *  - the 'opening' feature of an outlet carries `sleeveZ`, the bottom of the sleeve (an inner wall
+ *    of minWall around the opening) that hangs from the face skin into the cavity, as deep as the
+ *    deepest pocket (frontZ − pocket depth, lifted onto a domed face like the pocket floors).
+ *    Passthroughs have none.
  */
 import type { z } from 'zod';
 import type { CrossSection, Manifold, ManifoldToplevel } from 'manifold-3d';
@@ -184,6 +190,11 @@ export type ResolvedFeature =
       anchor: Vec2;
       /** Opening outline at its narrowest (the through-hole), incl. dx/dy. */
       placed: Placed;
+      /**
+       * Outlets only: Z of the bottom of the sleeve, the minWall-thick inner wall around the opening
+       * from the face down to here (= the deepest pocket's floorZ). Undefined for passthroughs.
+       */
+      sleeveZ?: number;
     };
 
 export interface CoverFrame {

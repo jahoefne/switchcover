@@ -2,7 +2,8 @@
  * Cover builder: CoverConfig → one valid Manifold, built in stages (never one giant boolean):
  *
  *   1. body    = style.outerBody(ctx)                      flat base exactly at z = 0
- *   2. hollow  = union(cavity) − union(feature adds)        pocket wells, ledge slabs, notch backings
+ *   2. hollow  = union(cavity) − union(feature adds)        pocket wells, ledge slabs, notch backings,
+ *                                                           outlet sleeves
  *      shell   = body − hollow                              ≡ (body − cavity) + adds, clipped
  *                                                           to the body (wells can never poke
  *                                                           through a style's face or edges)
@@ -67,15 +68,17 @@ export const BUILD_WARNING_CODES = {
  * Lift each pocket onto the local face: floorZ += surfaceZ(centre) − frontZ. A pocket under a
  * dome keeps its configured depth below the face it is cut into. The lift is never negative,
  * so a face lower than frontZ never pushes the floor towards the plate (the rocker gap from
- * the height chain is preserved; the pocket just gets shallower).
+ * the height chain is preserved; the pocket just gets shallower). Outlet sleeves (sleeveZ) are
+ * lifted the same way.
  */
 export function placeFeaturesOnFace(frame: CoverFrame, style: AnyCoverStyle, ctx: StyleCtx<Record<string, unknown>>): CoverFrame {
   return {
     ...frame,
     features: frame.features.map((f) => {
-      if (f.kind !== 'pocket') return f;
+      if (f.kind === 'opening' && f.sleeveZ === undefined) return f;
       const lift = Math.max(0, style.surfaceZ(ctx, f.placed.x, f.placed.y) - frame.frontZ);
-      return lift > 1e-9 ? { ...f, floorZ: f.floorZ + lift } : f;
+      if (!(lift > 1e-9)) return f;
+      return f.kind === 'pocket' ? { ...f, floorZ: f.floorZ + lift } : { ...f, sleeveZ: f.sleeveZ! + lift };
     }),
   };
 }
@@ -116,7 +119,7 @@ export function prepareCover(kit: Kit, config: CoverConfig, options: BuildOption
  * when close to it), so none of them add handles. A through-hole connects the face side to the
  * wall side and adds exactly one:
  *  - every opening (outlet / passthrough) whose outline overlaps the cavity footprint, since
- *    it cuts the skin into the cavity;
+ *    it cuts the skin (and an outlet's sleeve, a tube open at its bottom) into the cavity;
  *  - every access (bridge) hole whose outline overlaps the cavity footprint, since it pierces
  *    the pocket floor and the foot of the fillet wall (pocket side = face side) into the cavity
  *    below (open to the wall). The strip later spans it, but that is not part of the print.

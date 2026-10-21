@@ -1,5 +1,6 @@
 import LZString from 'lz-string';
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_BILRESA } from '../src/config/defaults';
 import { getPreset, listPresets, presetConfig } from '../src/config/presets';
 import { CoverConfigSchema, DEFAULT_CONFIG, type CoverConfig, type ModuleConfig } from '../src/config/schema';
 import { HASH_PREFIX, decodeHash, encodeHash, roundDeep } from '../src/config/urlCodec';
@@ -59,6 +60,17 @@ function perturb(base: CoverConfig, rand: () => number): CoverConfig {
  * existed get both offsets as 0 (zod default), everything else is unchanged.
  */
 const withGridOffsets = <T extends { grid: object }>(c: T) => ({ ...c, grid: { ...c.grid, offsetX: 0, offsetY: 0 } });
+
+/**
+ * The layout part of a config: plate, grid and the modules (cell, role, rotation, offset, Bilresa
+ * variant). Opening sizes are left out: a link stores its socket's size (Ø46 in the committed
+ * fixtures, the default of their day), while today's presets carry today's default (Ø50).
+ */
+const layoutOf = (c: Pick<CoverConfig, 'plate' | 'grid' | 'modules'>) => ({
+  plate: c.plate,
+  grid: c.grid,
+  modules: c.modules.map(({ opening: _opening, ...m }) => m),
+});
 
 describe('urlCodec', () => {
   it.each(listPresets().map((p) => [p.id, p.config] as const))('round-trips preset %s', (_id, config) => {
@@ -128,14 +140,15 @@ describe('urlCodec', () => {
 
     const a = decodeHash(V1_HASH_FIXTURES['ch-sd-1x2v-switch-socket']);
     expect(a.warnings).toEqual([]);
-    expect(a.config).toEqual(withGridOffsets(V1_SWITCH_SOCKET_MIGRATED));
-    // the layout part must still match today's preset
+    // v1 had no glue ledges, so the migration gives the link today's default ledge; the fixture's
+    // migrated snapshot holds the default of its day (4 mm), everything else in it still applies
+    expect(a.config).toEqual(
+      withGridOffsets({ ...V1_SWITCH_SOCKET_MIGRATED, bilresa: { ...V1_SWITCH_SOCKET_MIGRATED.bilresa, stripLedge: DEFAULT_BILRESA.stripLedge } }),
+    );
+    // the layout part must still match today's preset; the socket keeps the Ø46 the link stored
     const preset = getPreset('ch-sd-1x2v-switch-socket')!.config;
-    expect({ plate: a.config.plate, grid: a.config.grid, modules: a.config.modules }).toEqual({
-      plate: preset.plate,
-      grid: preset.grid,
-      modules: preset.modules,
-    });
+    expect(layoutOf(a.config)).toEqual(layoutOf(preset));
+    expect(a.config.modules[1].opening).toEqual({ shape: 'circle', d: 46 });
 
     const b = decodeHash(V1_HASH_FIXTURES['de-2x1h']);
     expect(b.warnings).toEqual([]);
@@ -145,11 +158,15 @@ describe('urlCodec', () => {
     expect(b.config.bilresa.strip).toEqual(getPreset('de-2x1h')!.config.bilresa.strip);
   });
 
-  it('committed v2 fixtures decode to the expected presets', () => {
+  it('committed v2 fixtures decode to their stored snapshot, laid out like the preset they were made from', () => {
     const a = decodeHash(V2_HASH_FIXTURES['ch-sd-1x2v-switch-socket']);
     expect(a.warnings).toEqual([]);
+    // a link stores the full config: it keeps the Bilresa settings and socket size of its day
+    // (depth 10, notch on, ledge 4, Ø46) when the defaults change
     expect(a.config).toEqual(withGridOffsets(V2_SWITCH_SOCKET_EXPECTED));
-    expect(a.config).toEqual(getPreset('ch-sd-1x2v-switch-socket')!.config);
+    // apart from those stored defaults it is still today's preset (layout, cover, print)
+    const preset = getPreset('ch-sd-1x2v-switch-socket')!.config;
+    expect({ ...a.config, bilresa: preset.bilresa, ...layoutOf(a.config) }).toEqual({ ...preset, ...layoutOf(preset) });
   });
 
   it('links without grid offsets (every link before they existed) parse with offset 0, no warnings', () => {

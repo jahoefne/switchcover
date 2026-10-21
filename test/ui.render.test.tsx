@@ -64,8 +64,8 @@ describe('App', () => {
     expect(screen.getByRole('link', { name: 'GitHub' }).getAttribute('href')).toBe('https://github.com/jahoefne/switchcover');
     const active = screen.getByRole('button', { name: 'CH 1×1 — switch' });
     expect(active.getAttribute('aria-pressed')).toBe('true');
-    // Cover numbers come from the main-thread resolveLayout.
-    expect(screen.getByText(/face at 26\.4 mm/)).toBeTruthy();
+    // Cover numbers come from the main-thread resolveLayout: plate 12 + rocker gap 2 + floor 2.4 + pocket 14.
+    expect(screen.getByText(/face at 30\.4 mm/)).toBeTruthy();
     await waitFor(() => expect(client.calls.length).toBeGreaterThan(0));
     expect(client.calls[0].options).toBeUndefined();
   });
@@ -87,8 +87,10 @@ describe('App', () => {
     expect(cells).toHaveLength(2);
     expect(cells[0]).toBeCloseTo(-19, 6);
     expect(cells[1]).toBeCloseTo(12, 6);
-    const pocket = svg.querySelector('.f-pocket')!;
-    expect(pocket.getAttribute('transform')).toMatch(/translate\(0 -34\.9\d*\) rotate\(-90\)/);
+    // the lying pocket sits dy 17 above its cell: world y = 19 + 17 = 36
+    const pocket = svg.querySelector('.f-pocket')!.getAttribute('transform')!.match(/^translate\(0 (-?[\d.]+)\) rotate\(-90\)$/);
+    expect(pocket).not.toBeNull();
+    expect(Number(pocket![1])).toBeCloseTo(-36, 6);
     expect(svg.querySelector('.f-outlet')!.getAttribute('transform')).toBe('translate(0 12)');
     // the cover outline reaches above the plate (it grows upwards only) and the view box shows it
     const outline = svg.querySelector('.cover-outline')!;
@@ -116,7 +118,7 @@ describe('App', () => {
     await waitFor(() => {
       const m = decodeHash(window.location.hash).config.modules[0];
       expect(m.role).toBe('outlet');
-      expect(m.opening).toEqual({ shape: 'circle', d: 46 });
+      expect(m.opening).toEqual({ shape: 'circle', d: 50 }); // the Swiss Type 13 default
       expect(m.bilresa).toBeUndefined();
     });
     await waitFor(() => expect(client.calls.at(-1)?.config.modules[0].role).toBe('outlet'));

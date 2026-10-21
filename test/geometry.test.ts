@@ -13,7 +13,7 @@ import { buildCover, type CoverBuild } from '../src/geometry/buildCover';
 import type { EdgeProfile, Kit, Placed } from '../src/geometry/contract';
 import { cavityCeiling, notchFloor, type OpeningFeature, type PocketFeature } from '../src/geometry/features';
 import { liveObjectCount, withScope } from '../src/geometry/kit';
-import { offsetPlaced, pointInPlaced, shapeCore } from '../src/geometry/shape2d';
+import { offsetPlaced, outlineWorld, pointInPlaced, shapeCore } from '../src/geometry/shape2d';
 import { outerPlaced } from '../src/layout/resolve';
 import { LAYOUT_IDS, layoutConfig } from './helpers/configs';
 import { getKit, getWasm } from './helpers/manifold';
@@ -163,6 +163,35 @@ describe.each(CASES)('cover %s × %s', (layoutId, styleId) => {
         const ring = ringPrism(kit, f.placed, e + 0.2, e + 0.8, ceil + 0.01, b.frame.frontZ - 0.01);
         const filled = intersectionVolume(b.manifold, ring) / ring.volume();
         expect(filled, `${f.id} rim`).toBeGreaterThan(0.85);
+      });
+    }
+  });
+
+  it('outlets hang a sleeve (outline + minWall) from the skin down to the deepest pocket floor', () => {
+    const top = b.frame.frontZ + 5;
+    const { minWall } = b.frame;
+    // where a column beside the opening meets nothing else that reaches lower (wells, notch backings, skirt)
+    const inCavity = outerPlaced(b.frame, b.frame.skirtT + 0.5);
+    const lower = pockets(b).flatMap((p) => [p.placed, ...(p.notch ? [p.notch] : [])].map((q) => offsetPlaced(q, minWall + 0.5)));
+    const deepest = Math.min(...pockets(b).map((p) => p.floorZ));
+    for (const f of openings(b)) {
+      if (f.role === 'passthrough') {
+        expect(f.sleeveZ, `${f.id} passthrough`).toBeUndefined();
+        continue;
+      }
+      expect(f.sleeveZ, `${f.id} sleeveZ`).toBeCloseTo(deepest, 9);
+      withScope(() => {
+        let probed = 0;
+        for (const [x, y] of outlineWorld(f.placed, -minWall / 2, 16)) {
+          if (!pointInPlaced([x, y], inCavity) || lower.some((q) => pointInPlaced([x, y], q))) continue;
+          const col = b.manifold.intersect(column(kit, x, y, -1, top));
+          expect(Math.abs(col.boundingBox().min[2] - f.sleeveZ!), `${f.id} sleeve bottom`).toBeLessThanOrEqual(TOL);
+          probed++;
+        }
+        expect(probed, `${f.id} probes`).toBeGreaterThanOrEqual(8);
+        // the wall is solid all round, from the sleeve bottom up to the skin
+        const ring = ringPrism(kit, f.placed, 0.2, minWall - 0.2, f.sleeveZ! + 0.1, cavityCeiling(b.frame));
+        expect(intersectionVolume(b.manifold, ring) / ring.volume(), `${f.id} sleeve wall`).toBeGreaterThan(0.99);
       });
     }
   });

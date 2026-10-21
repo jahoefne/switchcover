@@ -1,7 +1,8 @@
 /**
  * Finger notches in a style's edge zone (CoverStyle.allowsNotchInEdge): the built covers of the
- * faceted, stepped and organic styles at their plate-driven sizes. Probes are thin columns
- * intersected with the cover (the top of the material at a point).
+ * faceted, stepped and organic styles at their plate-driven sizes. The notch is off by default, so
+ * every config here switches it on (notchConfig). Probes are thin columns intersected with the
+ * cover (the top of the material at a point).
  */
 import type { Manifold } from 'manifold-3d';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -28,10 +29,16 @@ function columnTop(m: Manifold, x: number, y: number, zMax: number): number {
   return hit.isEmpty() ? -Infinity : hit.boundingBox().max[2];
 }
 
-function build(presetId: string, styleId: string) {
+/** A preset in a style with the finger notch switched on (it is off by default). */
+function notchConfig(presetId: string, styleId: string) {
   const cfg = presetConfig(presetId);
   cfg.cover.style = styleId;
-  const b = buildCover(kit, cfg);
+  cfg.bilresa.notch.enabled = true;
+  return cfg;
+}
+
+function build(presetId: string, styleId: string) {
+  const b = buildCover(kit, notchConfig(presetId, styleId));
   expect(b.warnings.filter((w) => w.severity === 'error'), `${presetId} ${styleId}`).toEqual([]);
   return b;
 }
@@ -135,14 +142,21 @@ describe('stepped 1×1: the notch opens into the step (no fin of top-tier wall)'
 
   it('a notch that crosses the step bites into it by itself (no breakout tool)', () => {
     withScope(() => {
-      const cfg = presetConfig('ch-sd-1x2v-switch-socket');
-      cfg.cover.style = 'stepped';
-      const { frame, params } = prepareCover(kit, cfg);
-      expect(frame.outer).toMatchObject({ w: 96.8, h: 156.8 });
+      const { frame, params } = prepareCover(kit, notchConfig('ch-sd-1x2v-switch-socket', 'stepped'));
+      // the Ø50 socket (top at −30 + 25 = −5) keeps minWall 2 + step inset 2 + pocket chamfer 0.6
+      // = 4.6 from the pocket, so the pocket spreads up to y = 34.9 (far end 70.2); its notch (top
+      // 77.2) + minWall 2 + rim allowance 0.6 sets the top at 79.8, above the plate-driven 78.4:
+      // the cover grows on the notch's side only, 96.8 × (78.4 + 79.8 = 158.2), centred 0.7 up
+      expect(frame.outer).toMatchObject({ w: 96.8, h: 158.2 });
+      expect(frame.outer.cy).toBeCloseTo(0.7, 6);
       const [p] = frame.features;
       if (p.kind !== 'pocket' || !p.notch) throw new Error('pocket with notch expected');
+      expect(p.placed.y).toBeCloseTo(34.9, 6);
+      expect(p.notch.y).toBeCloseTo(70.2, 6);
+      // the top tier's edge (79.8 − 5 = 74.8) runs 2.4 mm inside the notch
       const tier = offsetPlaced(outerPlaced(frame), -5);
       expect(containmentMargin(p.notch, tier)).toBeLessThan(0);
+      expect(containmentMargin(p.notch, tier)).toBeCloseTo(-2.4, 6);
       expect(notchBreakouts({ frame, params, kit } as never)).toHaveLength(0);
       build('ch-sd-1x2v-switch-socket', 'stepped');
       return null;
@@ -151,8 +165,7 @@ describe('stepped 1×1: the notch opens into the step (no fin of top-tier wall)'
 
   it('3 tiers on the 1×1: the notch bites through the top tier; the fin in the middle tier is below the skin and stays', () => {
     withScope(() => {
-      const cfg = presetConfig('ch-sd-1x1');
-      cfg.cover.style = 'stepped';
+      const cfg = notchConfig('ch-sd-1x1', 'stepped');
       cfg.cover.styleParams = { tiers: 3 };
       const { manifold, frame, params, warnings, expectedGenus } = buildCover(kit, cfg);
       expect(warnings.filter((w) => w.severity === 'error')).toEqual([]);

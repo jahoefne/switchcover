@@ -39,6 +39,13 @@ const bilresa = (col: number, row: number, extra: Partial<ModuleConfig> = {}): M
   ...extra,
 });
 
+/** A preset with the finger notch switched on (it is off by default). */
+function notched(presetId: string): CoverConfig {
+  const c = presetConfig(presetId);
+  c.bilresa.notch.enabled = true;
+  return c;
+}
+
 function withGrid(cols: number, rows: number, modules: ModuleConfig[]): CoverConfig {
   const c = presetConfig('custom');
   c.grid = { ...c.grid, cols, rows, pitchX: 60, pitchY: 60 };
@@ -114,8 +121,10 @@ describe('spreading', () => {
     expect(o.placed.x).toBe(0);
     expect(o.placed.y).toBe(-30); // outlets never move off their socket
     expect(p.placed.x).toBe(0);
-    // 70.6 mm pocket + Ø46 outlet on a 60 mm pitch: 35.3 + 23 + 2 − 60 = 0.3 mm
-    expect(p.placed.y).toBeCloseTo(30.3, 6);
+    // 70.6 mm pocket + Ø50 outlet on a 60 mm pitch: 35.3 + 25 + 2 − 60 = 2.3 mm (the rocker stays
+    // inside the 20 mm long hole, y ± 10)
+    expect(p.placed.y).toBeCloseTo(32.3, 6);
+    expect(pointInPlaced(p.anchor, p.holes[0])).toBe(true);
     expect(placedDistance(p.placed, o.placed)).toBeCloseTo(2, 4);
     expect(codes(f)).toContain(WARNING_CODES.pocketSpread);
     expect(codes(f)).not.toContain(WARNING_CODES.featureOverlap);
@@ -143,14 +152,17 @@ describe('spreading', () => {
 
   it('spreads three pockets in a column symmetrically (middle stays)', () => {
     const c = withGrid(1, 3, [bilresa(0, 0), bilresa(0, 1), bilresa(0, 2)]);
-    const ys = pockets(resolveLayout(c)).map((p) => p.placed.y);
+    const f = resolveLayout(c);
+    const ys = pockets(f).map((p) => p.placed.y);
     expect(ys[0]).toBeCloseTo(60 + 12.6, 4);
     expect(ys[1]).toBeCloseTo(0, 4);
     expect(ys[2]).toBeCloseTo(-60 - 12.6, 4);
+    // 12.6 mm is past the 20 mm long holes (y ± 10): minWall wins, the outer rockers are uncovered
+    expect(f.warnings.filter((w) => w.code === WARNING_CODES.accessUncovered).map((w) => w.featureId)).toEqual(['c0r0', 'c0r2']);
   });
 
-  /** The switch + socket combo layout (one 90 × 90 plate), built by hand. */
-  const comboLike = (dy = 15.9): CoverConfig => {
+  /** The switch + socket combo layout (one 90 × 90 plate), built by hand (dy 17 as in the preset). */
+  const comboLike = (dy = 17): CoverConfig => {
     const c = withGrid(1, 2, [bilresa(0, 0, { rot: 90, dy }), { col: 0, row: 1, role: 'outlet', rot: 0, dx: 0, dy: 0 }]);
     c.plate.h = 90;
     c.grid = { ...c.grid, pitchY: 31, offsetY: 3.5 };
@@ -159,38 +171,50 @@ describe('spreading', () => {
   const wide: StyleLimits = { minFrame: 0, minFrontZ: 0, maxEdgeR: Infinity, edgeAllowance: 6, pocketEdgeAllowance: 1.5 };
 
   it('stops spreading where the rocker would leave its access hole; the edges shrink instead', () => {
-    // no allowances: 3.6 mm ≥ minWall, nothing moves
+    // no allowances: Ø50 opening top −12 + 25 = 13, pocket bottom 19 + 17 − 20.3 = 15.7: 2.7 mm ≥
+    // minWall, nothing moves
     const plain = resolveLayout(comboLike());
-    expect(pockets(plain)[0].placed.y).toBeCloseTo(34.9, 9);
+    expect(pockets(plain)[0].placed.y).toBeCloseTo(36, 9);
     expect(codes(plain)).not.toContain(WARNING_CODES.pocketSpread);
-    // 9.5 mm wanted (2 + 6 + 1.5) would put the pocket at 40.8 and its 34 mm hole (y ± 17) above
-    // the rocker at y = 19: it stops at 36, the rocker on the hole's lower edge
+    // 9.5 mm wanted (2 + 6 + 1.5) would put the pocket at 13 + 9.5 + 20.3 = 42.8 and its 34 mm hole
+    // (y ± 17) above the rocker at y = 19: at 36 the rocker is already on the hole's lower edge, so
+    // the preset's pocket stays where it is and the edges shrink
     const f = resolveLayout(comboLike(), { limits: wide });
     const [p] = pockets(f);
     const [o] = openings(f);
     expect(p.placed.y).toBeCloseTo(36, 6);
     expect(pointInPlaced(p.anchor, p.holes[0])).toBe(true);
     expect(p.holes[0].y - 17).toBeCloseTo(19, 6);
-    expect(placedDistance(p.placed, o.placed)).toBeCloseTo(4.7, 6);
+    expect(placedDistance(p.placed, o.placed)).toBeCloseTo(2.7, 6);
     expect(codes(f)).toContain(WARNING_CODES.edgeReduced);
     expect(codes(f)).not.toContain(WARNING_CODES.accessUncovered);
-    expect(f.warnings.find((w) => w.code === WARNING_CODES.pocketSpread)?.message).toMatch(/moved 1\.1 mm up .*rocker stays inside the access hole/);
+    expect(codes(f)).not.toContain(WARNING_CODES.pocketSpread);
     expect(f.warnings.filter((w) => w.severity !== 'info')).toEqual([]);
+    // placed 1.1 mm lower (dy 15.9, centre 34.9) it is pushed up (past minWall's 35.3) to the same 36
+    const g = resolveLayout(comboLike(15.9), { limits: wide });
+    const [q] = pockets(g);
+    expect(q.placed.y).toBeCloseTo(36, 6);
+    expect(q.holes[0].y - 17).toBeCloseTo(19, 6);
+    expect(placedDistance(q.placed, openings(g)[0].placed)).toBeCloseTo(2.7, 6);
+    expect(codes(g)).toContain(WARNING_CODES.edgeReduced);
+    expect(codes(g)).not.toContain(WARNING_CODES.accessUncovered);
+    expect(g.warnings.find((w) => w.code === WARNING_CODES.pocketSpread)?.message).toMatch(/moved 1\.1 mm up .*rocker stays inside the access hole/);
+    expect(g.warnings.filter((w) => w.severity !== 'info')).toEqual([]);
   });
 
   it('minWall still wins over access (then the rocker is reported uncovered)', () => {
     const c = comboLike();
-    c.cover.minWall = 6; // pocket bottom ≥ 11 + 6 → centre 37.3, hole from 20.3
+    c.cover.minWall = 6; // pocket bottom ≥ 13 + 6 → centre 39.3, hole from 22.3 (above the rocker at 19)
     const f = resolveLayout(c);
     const [p] = pockets(f);
     expect(placedDistance(p.placed, openings(f)[0].placed)).toBeCloseTo(6, 6);
-    expect(p.placed.y).toBeCloseTo(37.3, 6);
+    expect(p.placed.y).toBeCloseTo(39.3, 6);
     expect(f.warnings.find((w) => w.code === WARNING_CODES.accessUncovered)?.severity).toBe('error');
   });
 
   it('does not hold back a pocket whose rocker is already outside its hole (dx/dy by hand)', () => {
     const c = comboLike();
-    c.modules[0].dx = 25; // the rotated hole spans x ± 19.56 around the pocket: the rocker (x 0) is outside
+    c.modules[0].dx = 25; // the rotated 34 × 20 hole spans x ± 10 around the pocket: the rocker (x 0) is outside
     const f = resolveLayout(c, { limits: wide });
     const [p] = pockets(f);
     expect(placedDistance(p.placed, openings(f)[0].placed)).toBeCloseTo(9.5, 6);
@@ -201,12 +225,12 @@ describe('spreading', () => {
   it('holds back both pockets of a pair symmetrically', () => {
     const c = presetConfig('ch-sd-1x2v-two-switches');
     c.modules = c.modules.map((m) => ({ ...m, rot: 0 }));
-    // 42 mm wanted between the two unrotated pockets: 26.3 mm each, but the 39.12 mm long holes
-    // (y ± 19.56) keep their rockers only up to 19.56
+    // 42 mm wanted between the two unrotated pockets: 26.3 mm each, but the 20 mm long holes
+    // (y ± 10) keep their rockers only up to 10 (more than minWall's 6.3 each)
     const f = resolveLayout(c, { limits: { minFrame: 0, minFrontZ: 0, maxEdgeR: Infinity, edgeAllowance: 20 } });
     const [top, bottom] = pockets(f);
-    expect(top.placed.y - 30).toBeCloseTo(19.56, 6);
-    expect(bottom.placed.y + 30).toBeCloseTo(-19.56, 6);
+    expect(top.placed.y - 30).toBeCloseTo(10, 6);
+    expect(bottom.placed.y + 30).toBeCloseTo(-10, 6);
     for (const p of [top, bottom]) expect(pointInPlaced(p.anchor, p.holes[0])).toBe(true);
     expect(codes(f)).toContain(WARNING_CODES.edgeReduced);
     expect(codes(f)).not.toContain(WARNING_CODES.accessUncovered);
@@ -224,8 +248,8 @@ describe('height chain', () => {
     c.bilresa.floorT = 3;
     const f = resolveLayout(c);
     expect(f.floorT).toBe(3);
-    expect(f.frontZ).toBeCloseTo(12 + 2 + 3 + 10, 9);
-    expect(pockets(f)[0].floorZ).toBeCloseTo(f.frontZ - 10, 9);
+    expect(f.frontZ).toBeCloseTo(12 + 2 + 3 + 14, 9);
+    expect(pockets(f)[0].floorZ).toBeCloseTo(f.frontZ - 14, 9);
     expect(pockets(f)[0].stripDepth).toBeCloseTo(1 + 0.2, 9);
     expect(pockets(f)[0].backFilletR).toBe(8);
   });
@@ -237,20 +261,57 @@ describe('height chain', () => {
     const f = resolveLayout(c);
     expect(f.floorT).toBeCloseTo(2 + 0.2 + 1.2, 9);
     expect(codes(f)).toContain(WARNING_CODES.floorClamped);
-    expect(f.frontZ).toBeCloseTo(12 + 2 + 3.4 + 10, 9);
-    // the shipped defaults (floorT 2.2, strip 1.0 + tol 0.2) are clamped to 2.4
-    expect(resolveLayout(presetConfig('ch-sd-1x1')).floorT).toBeCloseTo(2.4, 9);
+    expect(f.frontZ).toBeCloseTo(12 + 2 + 3.4 + 14, 9);
+    // the shipped defaults (floorT 2.4 = strip 1.0 + tol 0.2 + 1.2) sit exactly at the minimum
+    const d = resolveLayout(presetConfig('ch-sd-1x1'));
+    expect(d.floorT).toBeCloseTo(2.4, 9);
+    expect(codes(d)).not.toContain(WARNING_CODES.floorClamped);
+  });
+
+  it('defaults: frontZ = 12 + 2 + 2.4 + 14 = 30.4, pocket floor 16.4, cavity ceiling 27.4', () => {
+    const f = resolveLayout(presetConfig('ch-sd-1x1'));
+    expect(f.frontZ).toBeCloseTo(30.4, 9);
+    expect(pockets(f)[0].floorZ).toBeCloseTo(16.4, 9);
+    expect(f.frontZ - f.skinT).toBeCloseTo(27.4, 9);
   });
 
   it('uses the deepest per-module pocket and the style minimum', () => {
-    const c = withGrid(2, 1, [bilresa(0, 0), bilresa(1, 0, { bilresa: { variant: 'wheel', pocketDepth: 11 } })]);
+    const c = withGrid(2, 1, [bilresa(0, 0), bilresa(1, 0, { bilresa: { variant: 'wheel', pocketDepth: 15 } })]);
     c.bilresa.floorT = 3;
     const f = resolveLayout(c);
-    expect(f.frontZ).toBeCloseTo(12 + 2 + 3 + 11, 9);
-    expect(pockets(f).map((p) => p.floorZ)).toEqual([f.frontZ - 10, f.frontZ - 11]);
+    expect(f.frontZ).toBeCloseTo(12 + 2 + 3 + 15, 9);
+    expect(pockets(f).map((p) => p.floorZ)).toEqual([f.frontZ - 14, f.frontZ - 15]);
     const raised = resolveLayout(c, { limits: { minFrame: 0, minFrontZ: 40, maxEdgeR: 5 } });
     expect(raised.frontZ).toBe(40);
     expect(codes(raised)).toContain(WARNING_CODES.frontRaised);
+  });
+
+  it('outlet sleeves reach down to the deepest pocket floor (frontZ − deepest depth); passthroughs have none', () => {
+    const outlet: ModuleConfig = { col: 0, row: 1, role: 'outlet', rot: 0, dx: 0, dy: 0 };
+    const pass: ModuleConfig = { col: 1, row: 1, role: 'passthrough', rot: 0, dx: 0, dy: 0 };
+    // default depth 14: sleeve bottom 30.4 − 14 = 16.4, the pocket floor
+    const plain = resolveLayout(withGrid(2, 2, [bilresa(0, 0), bilresa(1, 0), outlet, pass]));
+    const [o, t] = openings(plain);
+    expect(o.role).toBe('outlet');
+    expect(o.sleeveZ).toBeCloseTo(16.4, 9);
+    expect(o.sleeveZ).toBeCloseTo(plain.frontZ - 14, 9);
+    expect(t.role).toBe('passthrough');
+    expect(t).not.toHaveProperty('sleeveZ');
+    // one deeper (16 mm) pocket: frontZ 12 + 2 + 2.4 + 16 = 32.4; the sleeve ends at that pocket's
+    // floor 32.4 − 16 = 16.4, below the 14 mm pocket's 18.4
+    const c = withGrid(2, 2, [bilresa(0, 0), bilresa(1, 0, { bilresa: { variant: '2button', pocketDepth: 16 } }), outlet, pass]);
+    const f = resolveLayout(c);
+    expect(f.frontZ).toBeCloseTo(32.4, 9);
+    expect(pockets(f).map((p) => p.floorZ)).toEqual([f.frontZ - 14, f.frontZ - 16]);
+    expect(openings(f)[0].sleeveZ).toBeCloseTo(f.frontZ - 16, 9);
+    expect(openings(f)[0].sleeveZ).toBeCloseTo(Math.min(...pockets(f).map((p) => p.floorZ)), 9);
+    expect(openings(f)[1]).not.toHaveProperty('sleeveZ');
+    // a raised face (style minimum) raises the floors and the sleeve bottom alike
+    const raised = resolveLayout(c, { limits: { minFrame: 0, minFrontZ: 40, maxEdgeR: 5 } });
+    expect(openings(raised)[0].sleeveZ).toBeCloseTo(40 - 16, 9);
+    // without pockets the configured depth counts: 30.4 − 14
+    const solo = withGrid(1, 1, [{ ...outlet, row: 0 }]);
+    expect(openings(resolveLayout(solo))[0].sleeveZ).toBeCloseTo(16.4, 9);
   });
 });
 
@@ -258,9 +319,14 @@ describe('outer size', () => {
   it('auto size wraps the plate (+clearance +skirt); symmetric content stays centred on the plate', () => {
     const f = resolveLayout(presetConfig('ch-sd-1x1'));
     // 90 + 2·(1 + 2.4) both ways: the plate sets the size. The pocket (35.3 + minWall 2 + margin 4)
-    // and the finger notch (end at 35.3 + 7, + minWall 2) fit inside; the notch backing ending
-    // 1.7 mm short of the skirt is bridged to it by the pocket feature, the cover does not grow.
+    // fits inside.
     expect(f.outer).toMatchObject({ w: 96.8, h: 96.8, cx: 0, cy: 0, cornerR: 6.4, autoW: 96.8, autoH: 96.8 });
+    // With the finger notch on (off by default) too: the notch (end at 35.3 + 7, + minWall 2) fits
+    // inside; its backing ending 1.7 mm short of the skirt is bridged to it by the pocket feature,
+    // the cover does not grow.
+    const n = resolveLayout(notched('ch-sd-1x1'));
+    expect(pockets(n)[0].notch).toBeDefined();
+    expect(n.outer).toEqual(f.outer);
   });
 
   it('grows only on the side a shifted pocket needs (the outline is the union of the requirement boxes)', () => {
@@ -331,21 +397,22 @@ describe('outer size', () => {
 
   it('style minFrame keeps features and finger notches (not the plate) away from the edge', () => {
     const lim = (minFrame: number): StyleLimits => ({ minFrame, minFrontZ: 0, maxEdgeR: 5 });
+    const n = notched('ch-sd-1x1');
     // 5 mm: pocket (35.3 + 6) and notch (42.3 + 5) fit inside the plate-driven 48.4
-    expect(resolveLayout(presetConfig('ch-sd-1x1'), { limits: lim(5) }).outer).toMatchObject({ w: 96.8, h: 96.8, cy: 0 });
+    expect(resolveLayout(n, { limits: lim(5) }).outer).toMatchObject({ w: 96.8, h: 96.8, cy: 0 });
     // 10 mm: the pocket still fits (35.3 + 10), the notch (bottom end 42.3) needs 52.3 below the
     // centre; only the bottom grows, the top stays plate-driven
-    const ten = resolveLayout(presetConfig('ch-sd-1x1'), { limits: lim(10) });
+    const ten = resolveLayout(n, { limits: lim(10) });
     expect(ten.outer).toMatchObject({ w: 96.8, h: 100.7 });
     expect(sides(ten).top).toBeCloseTo(48.4, 6);
     expect(sides(ten).bottom).toBeCloseTo(-52.3, 6);
-    const f = resolveLayout(presetConfig('ch-sd-1x1'), { limits: lim(20) });
+    const f = resolveLayout(n, { limits: lim(20) });
     expect(f.outer.w).toBe(96.8);
     expect(sides(f).bottom).toBeCloseTo(-(35.3 + 7 + 20), 6); // the notch
     expect(sides(f).top).toBeCloseTo(35.3 + 20, 6); // the pocket
-    // without a notch the pocket alone sets it, symmetrically
+    // without a notch (the default) the pocket alone sets it, symmetrically
     const c = presetConfig('ch-sd-1x1');
-    c.bilresa.notch.enabled = false;
+    expect(c.bilresa.notch.enabled).toBe(false);
     expect(resolveLayout(c, { limits: lim(20) }).outer.h).toBeCloseTo(2 * (35.3 + 20), 2);
     expect(resolveLayout(c, { limits: lim(20) }).outer.cy).toBe(0);
   });
@@ -361,7 +428,9 @@ describe('style limits: edge allowance, corner radius, plate inset', () => {
     const [o] = openings(f);
     expect(o.placed.y).toBe(-30);
     expect(placedDistance(p.placed, o.placed)).toBeCloseTo(2 + 6 + 1.5, 6);
-    expect(p.placed.y).toBeCloseTo(-30 + 23 + 9.5 + 35.3, 6);
+    // outlet top −30 + 25, the pocket centre 39.8 (its rocker 9.8 mm off, inside the hole's ± 10)
+    expect(p.placed.y).toBeCloseTo(-30 + 25 + 9.5 + 35.3, 6);
+    expect(pointInPlaced(p.anchor, p.holes[0])).toBe(true);
     expect(codes(f)).not.toContain(WARNING_CODES.edgeReduced);
     // pocketEdgeAllowance defaults to edgeAllowance
     const both = resolveLayout(presetConfig('ch-sd-1x2v-switch-socket'), { limits: { ...base, edgeAllowance: 3 } });
@@ -382,12 +451,15 @@ describe('style limits: edge allowance, corner radius, plate inset', () => {
   });
 
   it('reports (info) features placed closer than their edges need, (error) closer than minWall', () => {
-    // Diagonal neighbours are never spread: a pocket moved towards the outlet below-right of it.
+    // Diagonal neighbours are never spread: a pocket moved towards the Ø50 outlet below-right of it.
+    // Pocket at (−12, 12): its core segment's lower end (−12, −3) is hypot(42, 27) = 49.93 from the
+    // outlet centre (30, −30), a 49.93 − 20.3 − 25 = 4.63 mm gap.
     const outlet: ModuleConfig = { col: 1, row: 1, role: 'outlet', rot: 0, dx: 0, dy: 0 };
-    const c = withGrid(2, 2, [bilresa(0, 0, { dx: 20, dy: -20 }), outlet]);
+    const c = withGrid(2, 2, [bilresa(0, 0, { dx: 18, dy: -18 }), outlet]);
     const limits = { ...base, edgeAllowance: 6, pocketEdgeAllowance: 1.5 };
     const f = resolveLayout(c, { limits });
     const gap = placedDistance(pockets(f)[0].placed, openings(f)[0].placed);
+    expect(gap).toBeCloseTo(4.63, 2);
     expect(gap).toBeGreaterThan(2);
     expect(gap).toBeLessThan(2 + 6 + 1.5);
     expect(f.warnings.find((w) => w.code === WARNING_CODES.edgeReduced)?.severity).toBe('info');
@@ -437,11 +509,12 @@ describe('style limits: edge allowance, corner radius, plate inset', () => {
     const seen: number[] = [];
     const edgeInset = (drop: number) => {
       seen.push(drop);
-      return drop >= 10 ? 0 : 12; // a 10 mm deep, 12 mm wide edge
+      return drop >= 12 ? 0 : 12; // a 12 mm deep, 12 mm wide edge
     };
     const f = resolveLayout(c, { limits: { ...base, edgeInset } });
     // budget = frontZ − (plate top + rocker gap under the pocket floor) − skinT − skirtT
-    expect(seen[0]).toBeCloseTo(26.4 - 14 - 3 - 2.4, 9);
+    //        = 30.4 − (12 + 2) − 3 − 2.4 = 11 (< 12: the plate goes under the edge)
+    expect(seen[0]).toBeCloseTo(30.4 - 14 - 3 - 2.4, 9);
     expect(f.outer.w).toBeCloseTo(92 + 2 * 12, 6);
     expect(resolveLayout(c, { limits: { ...base, edgeInset: () => 0 } }).outer.w).toBe(96.8);
   });
@@ -455,7 +528,7 @@ describe('finger notch: inside the frame like other features, no growth for the 
   };
   const ids = ['ch-sd-1x1', 'ch-sd-1x2v-switch-socket', 'ch-sd-2x1h-two-switches', 'ch-sd-1x2v-two-switches', 'ch-sd-1x3v-switch-two-sockets', 'ch-sd-2x2', 'de-1x1', 'de-2x1h'];
   it.each(ids.flatMap((id) => Object.keys(STYLE_LIKE).map((k) => [id, k] as const)))('%s (%s): notch + max(minWall, minFrame) + allowance inside, manual = auto', (id, k) => {
-    const c = presetConfig(id);
+    const c = notched(id);
     const limits = STYLE_LIKE[k];
     const auto = resolveLayout(c, { limits });
     c.cover.size = { w: auto.outer.autoW, h: auto.outer.autoH };
@@ -473,7 +546,7 @@ describe('finger notch: inside the frame like other features, no growth for the 
   });
 
   it('a backing ending 0 … minWall short of the skirt no longer grows the cover (the pocket feature bridges it)', () => {
-    const f = resolveLayout(presetConfig('ch-sd-1x1'));
+    const f = resolveLayout(notched('ch-sd-1x1'));
     const [p] = pockets(f);
     const g = backingGap(f.outer, f.skirtT, offsetPlaced(p.notch!, f.minWall));
     expect(g).toBeGreaterThan(0);
@@ -490,9 +563,9 @@ describe('finger notch in the edge zone (CoverStyle.allowsNotchInEdge)', () => {
     cornerR: c.plate.cornerR,
     clearance: c.cover.clearance,
   });
-  const styled = (styleId: string, allowsNotchInEdge: boolean, presetId = 'ch-sd-1x1') => {
+  const styled =(styleId: string, allowsNotchInEdge: boolean, presetId = 'ch-sd-1x1') => {
     const style = getStyle(styleId)!;
-    const c = presetConfig(presetId);
+    const c = notched(presetId);
     const params = style.params.parse({}) as Record<string, unknown>;
     return resolveLayout(c, { limits: style.limits(params, plateOf(c)), allowsNotchInEdge });
   };
@@ -541,7 +614,7 @@ describe('finger notch in the edge zone (CoverStyle.allowsNotchInEdge)', () => {
   it('only the notch rule changes: pockets and openings keep max(minWall + margin, minFrame) + allowance', () => {
     for (const styleId of ['faceted', 'stepped', 'organic']) {
       const c = presetConfig('ch-sd-1x1');
-      c.bilresa.notch.enabled = false;
+      c.bilresa.notch.enabled = false; // (the default; explicit, as this test is about pockets and openings only)
       const style = getStyle(styleId)!;
       const params = style.params.parse({}) as Record<string, unknown>;
       const limits = style.limits(params, plateOf(c));
@@ -561,7 +634,7 @@ describe('finger notch in the edge zone (CoverStyle.allowsNotchInEdge)', () => {
     ['de-1x2v', 'organic'],
   ])('%s %s: notch + minWall + allowance inside the outline, backing inside the cavity, manual = auto', (presetId, styleId) => {
     const style = getStyle(styleId)!;
-    const c = presetConfig(presetId);
+    const c = notched(presetId);
     const params = style.params.parse({}) as Record<string, unknown>;
     const limits = style.limits(params, plateOf(c));
     const auto = resolveLayout(c, { limits, allowsNotchInEdge: true });
@@ -595,14 +668,18 @@ describe('access hole (one bridge hole under the strip)', () => {
     return s;
   }
 
-  it('default pocket: 34 mm wide, shortened from 44 (= 52 − 2·4) to fit the inset end caps; 6 mm gaps (info)', () => {
+  it('default pocket: 34 × 20 mm (20 = 52 − 2·16), hidden behind the Bilresa unshortened; 6 mm gaps (info)', () => {
     const c = presetConfig('ch-sd-1x1');
+    expect(c.bilresa.stripLedge).toBe(16);
     const f = resolveLayout(c);
     const [p] = pockets(f);
     const s = checkHole(p, c);
     expect(s.w).toBe(34); // min(34, 40.6 − 2·3)
-    // a 34 mm wide rounded rect (r 1.5) inside the 34.6 × 64.6 inset stadium: ≤ 39.12 long
-    expect(s.h).toBeCloseTo(39.12, 2);
+    expect(s.h).toBeCloseTo(52 - 2 * 16, 9);
+    expect(s.r).toBe(1.5);
+    // its corners (core ± 15.5, ± 8.5) lie along the straight sides of the 34.6 × 64.6 inset
+    // stadium (core y ± 15): 17.3 − 15.5 − 1.5 = 0.3 mm to spare across, none needed along
+    expect(containmentMargin(p.holes[0], offsetPlaced(p.placed, -c.bilresa.hiddenMargin))).toBeCloseTo(0.3, 6);
     expect(pointInPlaced(p.anchor, p.holes[0])).toBe(true);
     const narrow = f.warnings.find((w) => w.code === WARNING_CODES.accessNarrow);
     expect(narrow?.severity).toBe('info');
@@ -611,7 +688,24 @@ describe('access hole (one bridge hole under the strip)', () => {
     expect(codes(f)).not.toContain(WARNING_CODES.accessNone);
   });
 
-  it('length = strip.l − 2·stripLedge when that fits; a wider strip ledge shortens it', () => {
+  it('a short glue ledge (4 mm): 44 = 52 − 2·4 is shortened to 39.12 to fit the inset end caps', () => {
+    const c = presetConfig('ch-sd-1x1');
+    c.bilresa.stripLedge = 4;
+    const f = resolveLayout(c);
+    const [p] = pockets(f);
+    const s = checkHole(p, c);
+    expect(s.w).toBe(34);
+    // a 34 mm wide rounded rect (r 1.5) inside the 34.6 × 64.6 inset stadium: ≤ 39.12 long
+    expect(s.h).toBeCloseTo(39.12, 2);
+    expect(s.h).toBeLessThan(52 - 2 * 4);
+    expect(containmentMargin(p.holes[0], offsetPlaced(p.placed, -c.bilresa.hiddenMargin))).toBeGreaterThanOrEqual(-1e-9);
+    expect(pointInPlaced(p.anchor, p.holes[0])).toBe(true);
+    expect(f.warnings.find((w) => w.code === WARNING_CODES.accessNarrow)?.message).toMatch(/6 and 6 mm/);
+    expect(codes(f)).not.toContain(WARNING_CODES.accessUncovered);
+    expect(codes(f)).not.toContain(WARNING_CODES.accessNone);
+  });
+
+  it('length = strip.l − 2·stripLedge (− 2·|strip.dy|) when that fits', () => {
     const c = presetConfig('ch-sd-1x1');
     c.bilresa.stripLedge = 8;
     const [p] = pockets(resolveLayout(c));
@@ -662,7 +756,7 @@ describe('access hole (one bridge hole under the strip)', () => {
 
   it('no hole (warning) when nothing fits; strip covering the hole is a warning too', () => {
     const c = presetConfig('ch-sd-1x1');
-    c.bilresa.stripLedge = 26; // 51 − 52 < 0
+    c.bilresa.stripLedge = 26; // 52 − 2·26 = 0 < 0.5 (MIN_HOLE)
     const f = resolveLayout(c);
     expect(pockets(f)[0].holes).toHaveLength(0);
     expect(f.warnings.find((w) => w.code === WARNING_CODES.accessNone)?.severity).toBe('warning');
@@ -698,26 +792,35 @@ describe('features', () => {
   });
 
   it('notch sits at the pocket end farthest from the plate centre', () => {
-    const top = pockets(resolveLayout(presetConfig('ch-sd-1x2v-switch-socket')))[0];
+    const top = pockets(resolveLayout(notched('ch-sd-1x2v-switch-socket')))[0];
     expect(top.notch).toMatchObject({ shape: { kind: 'circle', d: 14 }, x: 0 });
-    expect(top.notch!.y).toBeCloseTo(30.3 + 35.3, 6);
-    const single = pockets(resolveLayout(presetConfig('ch-sd-1x1')))[0];
+    expect(top.notch!.y).toBeCloseTo(32.3 + 35.3, 6); // the pocket spread to 32.3 (see spreading)
+    const single = pockets(resolveLayout(notched('ch-sd-1x1')))[0];
     expect(single.notch!.y).toBeCloseTo(-35.3, 6); // tie → bottom
-    const rotated = pockets(resolveLayout(presetConfig('ch-sd-1x2v-two-switches')));
+    const rotated = pockets(resolveLayout(notched('ch-sd-1x2v-two-switches')));
     expect(rotated[0].notch!.x).toBeCloseTo(35.3, 6); // tie → right
   });
 
-  it('notch can be disabled globally or per module', () => {
+  it('notch is off by default; it can be switched on globally and overridden per module', () => {
     const c = presetConfig('ch-sd-2x1h-two-switches');
+    expect(pockets(resolveLayout(c)).map((p) => p.notch)).toEqual([undefined, undefined]);
+    // on per module while off globally
+    c.modules[0].bilresa = { variant: '2button', notch: true };
+    let ps = pockets(resolveLayout(c));
+    expect(ps[0].notch).toBeDefined();
+    expect(ps[1].notch).toBeUndefined();
+    // on globally, off per module
+    c.bilresa.notch.enabled = true;
+    c.modules[0].bilresa = { variant: '2button' };
     c.modules[1].bilresa = { variant: '2button', notch: false };
-    const ps = pockets(resolveLayout(c));
+    ps = pockets(resolveLayout(c));
     expect(ps[0].notch).toBeDefined();
     expect(ps[1].notch).toBeUndefined();
     c.bilresa.notch.enabled = false;
     expect(pockets(resolveLayout(c))[0].notch).toBeUndefined();
   });
 
-  it('outlets default to Ø46, passthroughs to a rounded rect, blanks are skipped', () => {
+  it('outlets default to Ø50, passthroughs to a rounded rect, blanks are skipped', () => {
     const c = withGrid(3, 1, [
       { col: 0, row: 0, role: 'outlet', rot: 0, dx: 0, dy: 0 },
       { col: 1, row: 0, role: 'passthrough', rot: 0, dx: 0, dy: 0 },
@@ -728,18 +831,22 @@ describe('features', () => {
       ['c0r0', 'outlet', 'circle'],
       ['c1r0', 'passthrough', 'roundedRect'],
     ]);
-    expect(os[0].placed.shape).toEqual({ kind: 'circle', d: 46 });
+    expect(os[0].placed.shape).toEqual({ kind: 'circle', d: 50 });
   });
 });
 
 describe('warnings', () => {
-  it('warns about deep opening tunnels only when the face sits more than 15 mm above the plate', () => {
-    // default: frontZ = 12 + 2 + 2.4 + 10 = 26.4 → 14.4 mm tunnel, no warning
+  it('warns about deep opening tunnels only when the face sits more than 20 mm above the plate', () => {
+    // default: frontZ = 12 + 2 + 2.4 + 14 = 30.4 → 18.4 mm tunnel, no warning
     expect(codes(resolveLayout(presetConfig('ch-sd-1x2v-switch-socket')))).not.toContain(WARNING_CODES.openingDeep);
     const deep = presetConfig('ch-sd-1x2v-switch-socket');
-    deep.bilresa.pocketDepth = 12; // → 16.4 mm tunnel
+    deep.bilresa.pocketDepth = 16; // → 20.4 mm tunnel
     expect(codes(resolveLayout(deep))).toContain(WARNING_CODES.openingDeep);
     expect(codes(resolveLayout(presetConfig('ch-sd-1x1')))).not.toContain(WARNING_CODES.openingDeep);
+    // no openings, no tunnel: never a warning, however deep the pocket
+    const solo = presetConfig('ch-sd-1x1');
+    solo.bilresa.pocketDepth = 16;
+    expect(codes(resolveLayout(solo))).not.toContain(WARNING_CODES.openingDeep);
   });
 
   it('warns when the cover exceeds 250 mm', () => {

@@ -1,7 +1,8 @@
 /**
  * Test configurations: every preset plus a few extra layouts that exercise paths the presets
  * do not (passthrough, rounded-rect outlet, wheel pocket, rotation + spreading against an
- * opening, notch off, per-module depth, dx/dy), and seeded random layouts.
+ * opening, finger notches (off by default), per-module notch off, per-module depth, dx/dy), and
+ * seeded random layouts.
  */
 import { listPresets, presetConfig } from '../../src/config/presets';
 import { CoverConfigSchema, type CoverConfig, type ModuleConfig, type OpeningSpec } from '../../src/config/schema';
@@ -25,12 +26,25 @@ function rectOutletShallow(): CoverConfig {
     { col: 0, row: 0, role: 'outlet', rot: 0, dx: 5, dy: 0, opening: { shape: 'roundedRect', w: 40, h: 50, cornerR: 6 } },
     { col: 0, row: 1, role: 'bilresa', rot: 180, dx: 0, dy: -3, bilresa: { variant: '2button', pocketDepth: 8.5, notch: false } },
   ];
+  c.bilresa.notch.enabled = true; // so the per-module 'off' overrides something
   return c;
+}
+
+/** A preset with the finger notch switched on (it is off by default). */
+function withNotch(presetId: string): () => CoverConfig {
+  return () => {
+    const c = presetConfig(presetId);
+    c.bilresa.notch.enabled = true;
+    return c;
+  };
 }
 
 const EXTRA: Record<string, () => CoverConfig> = {
   'x-passthrough-wheel': passthroughWheel,
   'x-rect-outlet-shallow': rectOutletShallow,
+  'x-notch-1x1': withNotch('ch-sd-1x1'),
+  'x-notch-switch-socket': withNotch('ch-sd-1x2v-switch-socket'),
+  'x-notch-combo': withNotch('ch-sd-1x1-combo'),
 };
 
 /** Ids of every test layout (presets first). */
@@ -90,7 +104,7 @@ export function randomConfig(seed: number): CoverConfig {
         m.bilresa = {
           variant: pick(['2button', 'wheel'] as const),
           pocketDepth: pick([undefined, 9, 12]),
-          notch: pick([undefined, false]),
+          notch: pick([undefined, true]),
         };
       }
       if (role === 'outlet') m.opening = { ...pick(OUTLET_SHAPES) };

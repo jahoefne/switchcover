@@ -72,17 +72,18 @@ export const MIN_POCKET_DEPTH = 8.5;
 export const DEFAULT_BILRESA: BilresaSettings = {
   /**
    * Pocket depth below the face: the nested pocket follows the 8 mm back fillet, then has
-   * 2 mm of straight wall. The Bilresa stands 18.5 − depth proud of the face.
+   * 6 mm of straight wall. The Bilresa stands 18.5 − depth proud of the face (4.5 mm).
+   * Outlet sleeves reach as deep (see the opening feature).
    */
-  pocketDepth: 10,
+  pocketDepth: 14,
   /** Gap between the Bilresa and the pocket wall, per side (horizontal, also along the fillet). */
   pocketClearance: 0.3,
   /** Pocket floor thickness (clamped to ≥ stripDepth + 1.2 by the resolver). */
   floorT: 2.4,
   /** The access hole stays this far inside the pocket outline (hidden by the Bilresa). */
   hiddenMargin: 3,
-  /** Finger notch at the pocket's far end from the plate centre (exposes the Bilresa's rounded edge). */
-  notch: { enabled: true, d: 14 },
+  /** Finger notch at the pocket's far end from the plate centre (exposes the Bilresa's rounded edge). Off by default. */
+  notch: { enabled: false, d: 14 },
   /** Access (bridge) hole width across the Bilresa, centred on the pocket. */
   access: { w: 34 },
   /**
@@ -93,9 +94,10 @@ export const DEFAULT_BILRESA: BilresaSettings = {
   strip: { shape: 'stadium', l: 52, w: 22, protrusion: 1.0, dx: 0, dy: 0 },
   /**
    * Length of floor (mm) the strip rests on at each end. The strip is glued onto these two
-   * ledges and spans the access hole between them (hole length = strip length − 2 · ledge).
+   * ledges and spans the access hole between them (hole length = strip length − 2 · ledge:
+   * 52 − 2 · 16 = 20 mm, so the hole is 34 × 20).
    */
-  stripLedge: 4,
+  stripLedge: 16,
 };
 
 export const DEFAULT_COVER: CoverSettings = {
@@ -126,8 +128,8 @@ export const DEFAULT_PRINT: PrintSettings = {
 // Openings
 // ---------------------------------------------------------------------------
 
-/** Swiss Type 13 socket: Ø 46 mm round cut-out. */
-export const OUTLET_CH: OpeningSpec = { shape: 'circle', d: 46 };
+/** Swiss Type 13 socket: Ø 50 mm round cut-out. */
+export const OUTLET_CH: OpeningSpec = { shape: 'circle', d: 50 };
 /** German/EU Schuko socket: approximate, verify against a real plate. */
 export const OUTLET_DE: OpeningSpec = { shape: 'circle', d: 50 };
 /** Default passthrough (keeps an existing device reachable); approximate key size. */
@@ -190,4 +192,4 @@ export const NOTCH_FLOOR_LIFT = 2;
 /** Covers larger than this (either side, mm) probably do not fit the print bed. */
 export const MAX_PRINT_SIZE = 250;
 /** Opening tunnels deeper than this (frontZ − plate depth, mm) may stop plugs seating. */
-export const MAX_OPENING_TUNNEL = 15;
+export const MAX_OPENING_TUNNEL = 20;

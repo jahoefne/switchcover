@@ -7,7 +7,7 @@
  * the tools of every feature and apply them stage by stage (one union per stage).
  *
  *  - `add` tools are material that must exist INSIDE the body (pocket wells, strip-ledge slabs,
- *    notch backings and their skirt bridges).
+ *    notch backings and their skirt bridges, outlet sleeves).
  *    buildCover carves them out of the cavity tool instead of adding them to the body, which
  *    is equivalent but can never protrude through a style's face or edge profile.
  *    buildTestFit unions them as the part's body.
