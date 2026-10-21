@@ -28,6 +28,7 @@
  *    `BuildError` / `BuildResponse` (+ `isBuildError`).
  *  - `CoverStyle`'s schema bound is `z.ZodObject` (zod 4's default generics, which accept
  *    any concrete object schema incl. strict ones) instead of `z.ZodObject<any>`.
+ *  - WP1 (additive): `BuildRequest.featureId` picks the pocket of a 'testFit' build.
  */
 import type { z } from 'zod';
 import type { CrossSection, Manifold, ManifoldToplevel } from 'manifold-3d';
@@ -278,6 +279,8 @@ export interface BuildRequest {
   kind: BuildKind;
   config: CoverConfig;
   quality: Quality;
+  /** 'testFit' only: id of the pocket to print (default: the first pocket). */
+  featureId?: string;
 }
 
 export interface BuildStats {
