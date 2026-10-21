@@ -1,115 +1,186 @@
 /**
- * Phase-0 app shell: preset picker + 3D preview of the stub build. WP3 replaces it.
- * The URL hash (#v1.…) is the source of truth for the config.
+ * switchcover app shell: sidebar of panels on the left, 3D viewer on the right (stacked
+ * below 900 px). The URL hash is the source of truth for the config (useConfig); the
+ * geometry worker builds previews and exports (useGeometry).
  */
-import { useEffect, useState } from 'react';
-import { listPresets, presetConfig } from '../config/presets';
-import type { CoverConfig } from '../config/schema';
-import { decodeHash, encodeHash } from '../config/urlCodec';
-import type { BuildResult, Warning } from '../geometry/contract';
-import { GeometryClient, isBenignBuildError } from '../worker/client';
-import { Viewer, type ViewerMesh } from './Viewer';
+import { Component, useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { getPreset } from '../config/presets';
+import { featureId } from '../layout/resolve';
+import { deriveFrame, fmt, mergeWarnings } from './derive';
+import { useConfig } from './hooks/useConfig';
+import { defaultClientFactory, useGeometry, type ClientFactory } from './hooks/useGeometry';
+import { Section } from './components/Section';
+import { ToastProvider } from './components/Toasts';
+import { AdvancedPanel } from './panels/AdvancedPanel';
+import { ExportPanel } from './panels/ExportPanel';
+import type { Cell } from './panels/LayoutSvg';
+import { ModulesPanel } from './panels/ModulesPanel';
+import { PlatePanel } from './panels/PlatePanel';
+import { PresetsPanel } from './panels/PresetsPanel';
+import { StylePanel } from './panels/StylePanel';
+import { Viewer, type ViewerMesh } from './viewer/Viewer';
 
-function initialState(): { config: CoverConfig; warnings: Warning[] } {
-  if (!window.location.hash) return { config: presetConfig('ch-sd-1x1'), warnings: [] };
-  return decodeHash(window.location.hash);
+export const GITHUB_URL = 'https://github.com/jahoefne/switchcover';
+
+export interface AppProps {
+  /** Worker client factory (tests inject a fake). */
+  createClient?: ClientFactory;
 }
 
-export function App() {
-  const [{ config, warnings: hashWarnings }, setState] = useState(initialState);
-  const [result, setResult] = useState<BuildResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [client, setClient] = useState<GeometryClient | null>(null);
+export function App({ createClient = defaultClientFactory }: AppProps) {
+  return (
+    <ToastProvider>
+      <ErrorBoundary>
+        <Main createClient={createClient} />
+      </ErrorBoundary>
+    </ToastProvider>
+  );
+}
 
-  // Created in an effect (not useMemo) so StrictMode's mount/unmount/mount cycle never
-  // leaves the app holding a disposed client.
-  useEffect(() => {
-    const c = new GeometryClient();
-    const unsubscribe = c.onBusyChange(setBusy);
-    setClient(c);
-    return () => {
-      unsubscribe();
-      c.dispose();
-    };
+function Main({ createClient }: { createClient: ClientFactory }) {
+  const { config, hashWarnings, update, loadPreset, reset, dismissHashWarnings, shareUrl } = useConfig();
+  const derived = useMemo(() => deriveFrame(config), [config]);
+  const { frame, style, params, limits } = derived;
+  const geometry = useGeometry(config, createClient);
+  const shown = geometry.build;
+  const [selected, setSelected] = useState<Cell>(() => {
+    const m = config.modules[0];
+    return m ? { col: m.col, row: m.row } : { col: 0, row: 0 };
+  });
+  const modulesRef = useRef<HTMLDetailsElement>(null);
+
+  const mesh: ViewerMesh | null = useMemo(
+    () => (shown ? { positions: shown.result.positions, indices: shown.result.indices } : null),
+    [shown],
+  );
+  const current = shown?.config === config;
+  // Build-only warnings (geometry checks) are shown only while they belong to this config.
+  const warnings = mergeWarnings(hashWarnings, frame.warnings, current && shown ? shown.result.frame.warnings ?? [] : []);
+
+  const selectModule = useCallback((cell: Cell) => {
+    setSelected(cell);
+    const el = modulesRef.current;
+    if (el) {
+      el.open = true;
+      el.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    }
   }, []);
 
-  useEffect(() => {
-    const onHash = () => setState(decodeHash(window.location.hash));
-    window.addEventListener('hashchange', onHash);
-    return () => window.removeEventListener('hashchange', onHash);
-  }, []);
+  const onLoadPreset = useCallback(
+    (id: string) => {
+      loadPreset(id);
+      setSelected({ col: 0, row: 0 });
+    },
+    [loadPreset],
+  );
 
-  useEffect(() => {
-    if (!client) return;
-    let live = true;
-    client.build(config).then(
-      (r) => {
-        if (!live) return;
-        setResult(r);
-        setError(null);
-      },
-      (e: unknown) => {
-        if (!live || isBenignBuildError(e)) return;
-        setError(e instanceof Error ? e.message : String(e));
-      },
-    );
-    return () => {
-      live = false;
-    };
-  }, [client, config]);
-
-  const selectPreset = (id: string) => {
-    const next = presetConfig(id);
-    window.history.replaceState(null, '', encodeHash(next));
-    setState({ config: next, warnings: [] });
-  };
-
-  const mesh: ViewerMesh | null = result ? { positions: result.positions, indices: result.indices } : null;
-  const frame = result?.frame;
-  const warnings = [...hashWarnings, ...(frame?.warnings ?? [])];
+  const pockets = frame.features.filter((f) => f.kind === 'pocket').length;
+  const openings = frame.features.length - pockets;
 
   return (
     <div className="app">
-      <aside className="panel">
-        <h1>switchcover</h1>
-        <label>
-          Preset
-          <select value={config.plate.preset} onChange={(e) => selectPreset(e.target.value)}>
-            {listPresets().map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        {frame && (
-          <dl>
-            <dt>Cover</dt>
-            <dd>
-              {frame.outer.w.toFixed(1)} × {frame.outer.h.toFixed(1)} × {frame.frontZ.toFixed(1)} mm
-            </dd>
-            <dt>Build</dt>
-            <dd>
-              {result.stats.tris} triangles, {result.stats.ms.toFixed(0)} ms{busy ? ' (updating…)' : ''}
-            </dd>
-          </dl>
-        )}
-        {error && <p className="error">{error}</p>}
-        {warnings.length > 0 && (
-          <ul className="warnings">
-            {warnings.map((w, i) => (
-              <li key={i} className={w.severity}>
-                {w.message}
-              </li>
-            ))}
-          </ul>
-        )}
-        <p className="note">Phase-0 preview: outer body and cavity only.</p>
-      </aside>
-      <main className="stage">
-        <Viewer mesh={mesh} />
-      </main>
+      <header className="app-header">
+        <div className="brand">
+          <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" width={22} height={22} />
+          <h1>switchcover</h1>
+        </div>
+        <p className="tagline">Printable covers that turn existing light-switch plates into IKEA Bilresa smart-switch mounts.</p>
+        <a className="gh-link" href={GITHUB_URL} target="_blank" rel="noreferrer">
+          GitHub
+        </a>
+      </header>
+      <div className="app-body">
+        <aside className="sidebar" aria-label="Settings">
+          {hashWarnings.length > 0 && (
+            <div className="banner banner-warning" role="alert">
+              {hashWarnings.map((w, i) => (
+                <p key={i}>{w.message}</p>
+              ))}
+              <button type="button" className="btn btn-ghost btn-small" onClick={dismissHashWarnings}>
+                Dismiss
+              </button>
+            </div>
+          )}
+          <Section id="presets" title="Presets" summary={getPreset(config.plate.preset)?.label ?? 'Custom'} defaultOpen>
+            <PresetsPanel activeId={config.plate.preset} onLoad={onLoadPreset} onReset={reset} />
+          </Section>
+          <Section id="plate" title="Plate" summary={`${fmt(config.plate.w)} × ${fmt(config.plate.h)} mm, ${config.grid.cols}×${config.grid.rows}`}>
+            <PlatePanel config={config} update={update} />
+          </Section>
+          <Section
+            id="modules"
+            ref={modulesRef}
+            title="Modules"
+            summary={`${pockets} pocket${pockets === 1 ? '' : 's'}, ${openings} opening${openings === 1 ? '' : 's'} · ${featureId(selected.col, selected.row)}`}
+            defaultOpen
+          >
+            <ModulesPanel config={config} frame={frame} update={update} selected={selected} onSelect={setSelected} />
+          </Section>
+          <Section id="style" title="Style" summary={style.label} defaultOpen>
+            <StylePanel config={config} style={style} params={params} limits={limits} update={update} />
+          </Section>
+          <Section id="advanced" title="Bilresa & print" summary={`pocket ${fmt(config.bilresa.pocketDepth)} mm`}>
+            <AdvancedPanel config={config} frame={frame} style={style} update={update} />
+          </Section>
+          <Section id="export" title="Export" summary={`${fmt(frame.outer.w)} × ${fmt(frame.outer.h)} × ${fmt(frame.frontZ)} mm`} defaultOpen>
+            <ExportPanel
+              config={config}
+              frame={frame}
+              style={style}
+              stats={shown?.result.stats ?? null}
+              statsStale={!current}
+              warnings={warnings}
+              download={geometry.download}
+              shareUrl={shareUrl}
+              onSelectModule={selectModule}
+            />
+          </Section>
+          <footer className="sidebar-footer">
+            Units are millimetres. Front view: X right, Y up, Z out of the wall.{' '}
+            <a href={GITHUB_URL} target="_blank" rel="noreferrer">
+              Source &amp; docs
+            </a>
+          </footer>
+        </aside>
+        <main className="stage">
+          <Viewer mesh={mesh} frame={frame} busy={geometry.busy} error={geometry.error} />
+        </main>
+      </div>
     </div>
   );
+}
+
+interface BoundaryState {
+  error: Error | null;
+}
+
+/** Last-resort guard: a render error shows a reset button instead of a blank page. */
+class ErrorBoundary extends Component<{ children: ReactNode }, BoundaryState> {
+  override state: BoundaryState = { error: null };
+
+  static getDerivedStateFromError(error: Error): BoundaryState {
+    return { error };
+  }
+
+  override render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="crash" role="alert">
+        <h1>switchcover hit a problem</h1>
+        <p>{this.state.error.message}</p>
+        <p>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              window.location.hash = '';
+              window.location.reload();
+            }}
+          >
+            Start over with the default layout
+          </button>
+        </p>
+      </div>
+    );
+  }
 }
