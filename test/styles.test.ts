@@ -15,6 +15,7 @@ import { getStyle, listStyles, type AnyCoverStyle } from '../src/styles';
 import { bodyPlaced, edgeRoom, insideDistance } from '../src/styles/common/frame';
 import { offsetProfile, type Walls } from '../src/styles/common/profile';
 import { domeEnvelope } from '../src/styles/organic/dome';
+import { facetedBody } from '../src/styles/faceted';
 import { organicBody } from '../src/styles/organic';
 import { getKit } from './helpers/manifold';
 
@@ -48,6 +49,23 @@ const SPECS: Spec[] = [
       { cornerR: 4, edgeR: 14, domeSag: 1.5, flareR: 1 }, // edgeR > cornerR (sharp plateau corners)
     ],
     plateau: (frame, p) => offsetPlaced(bodyPlaced(frame, p.cornerR as number), -(p.edgeR as number)),
+  },
+  {
+    id: 'faceted',
+    defaults: { bevelW: 7, bevelAngleDeg: 45, groove: true, grooveW: 1, grooveD: 0.8, cornerR: 3 },
+    orientation: 'faceDown',
+    body: facetedBody as unknown as BodyFn,
+    variants: [{}, { bevelAngleDeg: 25, groove: false, cornerR: 0 }],
+    extremes: [
+      { bevelW: 3, bevelAngleDeg: 60, grooveW: 3, grooveD: 2, cornerR: 20 },
+      { bevelW: 15, bevelAngleDeg: 60, grooveW: 0.6, grooveD: 0.3, cornerR: 0 },
+      { bevelW: 15, bevelAngleDeg: 25, groove: false, cornerR: 10 },
+    ],
+    plateau: (frame, p) =>
+      offsetPlaced(
+        bodyPlaced(frame, p.cornerR as number),
+        -((p.bevelW as number) + (p.groove ? 1.5 + (p.grooveW as number) : 0)),
+      ),
   },
 ];
 
