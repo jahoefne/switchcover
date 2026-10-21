@@ -6,7 +6,7 @@ import type { CoverStyle, Kit } from '../src/geometry/contract';
 import type { PocketFeature } from '../src/geometry/features';
 import { liveObjectCount, withScope } from '../src/geometry/kit';
 import { outerPlaced } from '../src/layout/resolve';
-import { getStyle, listStyles, parseStyleParams, resolveStyle, type AnyCoverStyle } from '../src/styles';
+import { DEFAULT_STYLE_ID, getStyle, listStyles, parseStyleParams, resolveStyle, type AnyCoverStyle } from '../src/styles';
 import { minimalStyle } from '../src/styles/minimal';
 import { expectSolid, getKit } from './helpers/manifold';
 import { column, plainFloorPoint, topOfIntersection } from './helpers/probes';
@@ -52,7 +52,7 @@ describe('buildCover (staged: body − (cavity − wells) − cuts)', () => {
     c.cover.style = 'does-not-exist';
     withScope(() => {
       const { frame, style, warnings } = buildCover(kit, c);
-      expect(style.id).toBe('box');
+      expect(style.id).toBe(DEFAULT_STYLE_ID);
       expect(frame.warnings.map((w) => w.code)).toContain('style-unknown');
       expect(warnings).toEqual(frame.warnings);
       return null;
