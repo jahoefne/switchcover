@@ -133,6 +133,34 @@ describe('App', () => {
     });
   });
 
+  it("shows the style's resolved print orientation and follows the organic dome slider", () => {
+    const cfg = presetConfig('ch-sd-1x1');
+    cfg.cover.style = 'organic';
+    cfg.cover.styleParams = { domeSag: 2 };
+    setHash(encodeHash(cfg));
+    renderApp();
+    const exportPanel = within(document.getElementById('export')!);
+    const stylePanel = within(document.getElementById('style')!);
+    const printPanel = within(document.getElementById('advanced')!);
+    expect(exportPanel.getByText('Face up')).toBeTruthy();
+    expect(stylePanel.getByText(/face up by default/)).toBeTruthy();
+    expect(printPanel.getByRole('option', { name: 'Style default (face up)' })).toBeTruthy();
+    expect(exportPanel.queryByText(/look mirrored/)).toBeNull();
+
+    fireEvent.change(stylePanel.getByLabelText('Dome height slider'), { target: { value: '0' } });
+    expect(exportPanel.getByText('Face down')).toBeTruthy();
+    expect(stylePanel.getByText(/face down by default/)).toBeTruthy();
+    expect(printPanel.getByRole('option', { name: 'Style default (face down)' })).toBeTruthy();
+    expect(exportPanel.getByText(/look mirrored/)).toBeTruthy();
+
+    // an explicit orientation overrides the style's default, whatever the dome
+    fireEvent.change(stylePanel.getByLabelText('Dome height slider'), { target: { value: '3' } });
+    expect(exportPanel.getByText('Face up')).toBeTruthy();
+    fireEvent.change(printPanel.getByLabelText('Orientation'), { target: { value: 'faceDown' } });
+    expect(exportPanel.getByText('Face down')).toBeTruthy();
+    expect(printPanel.getByRole('option', { name: 'Style default (face up)' })).toBeTruthy();
+  });
+
   it('shows export errors in a toast instead of crashing', async () => {
     renderApp();
     fireEvent.click(screen.getByRole('button', { name: 'Download STL' }));

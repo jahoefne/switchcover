@@ -1,7 +1,7 @@
 import { MIN_POCKET_DEPTH } from '../../config/defaults';
 import type { CoverConfig, PrintSettings } from '../../config/schema';
 import type { CoverFrame } from '../../geometry/contract';
-import type { AnyCoverStyle } from '../../styles';
+import { stylePrintOrientation, type AnyCoverStyle } from '../../styles';
 import type { ConfigUpdater } from '../hooks/useConfig';
 import { fmt } from '../derive';
 import { Group } from '../components/Section';
@@ -11,15 +11,18 @@ interface AdvancedPanelProps {
   config: CoverConfig;
   frame: CoverFrame;
   style: AnyCoverStyle;
+  /** Parsed style params (the style's default orientation may depend on them). */
+  params: Record<string, unknown>;
   update(fn: ConfigUpdater): boolean;
 }
 
-export function AdvancedPanel({ config, frame, style, update }: AdvancedPanelProps) {
+export function AdvancedPanel({ config, frame, style, params, update }: AdvancedPanelProps) {
   const { bilresa, cover, print } = config;
   const set = (fn: (c: CoverConfig) => void) => update((c) => void fn(c));
   const autoW = Math.ceil(frame.outer.autoW);
   const autoH = Math.ceil(frame.outer.autoH);
   const floorClamped = frame.floorT > bilresa.floorT + 1e-6;
+  const styleDefault = stylePrintOrientation(style, params);
 
   return (
     <>
@@ -156,7 +159,7 @@ export function AdvancedPanel({ config, frame, style, update }: AdvancedPanelPro
           label="Orientation"
           value={print.orientation}
           options={[
-            { value: 'style', label: `Style default (${style.printOrientation === 'faceDown' ? 'face down' : 'face up'})` },
+            { value: 'style', label: `Style default (${styleDefault === 'faceDown' ? 'face down' : 'face up'})` },
             { value: 'faceDown', label: 'Face down' },
             { value: 'faceUp', label: 'Face up' },
           ]}

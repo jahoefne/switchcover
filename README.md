@@ -38,7 +38,7 @@ Live: <https://jahoefne.github.io/switchcover/>
 | Style | Look | Prints |
 |---|---|---|
 | Minimal (default) | rounded block, crisp top chamfer, chamfered cut-outs | face down |
-| Organic | large corners, quarter-round fillet into the face, optional dome, flared sockets | face down; with a dome switch to face up |
+| Organic | large corners, quarter-round fillet into the face, optional dome, flared sockets | face down; face up as soon as the face is domed |
 | Faceted | mitred bevel frame, thin shadow groove, chamfered sockets | face down (bevels under 45° need edge supports) |
 | Stepped | two or three tiers, counterbored sockets | face up (tiers would start mid-air face down) |
 | Plain box (sharp edges) | the simplest possible style | face down |
@@ -176,7 +176,8 @@ more than 51 mm, raise the strip length (the test-fit part shows it).
      shrinks them safely when features were placed by hand closer than the allowances.
    - `decorate` (optional): extra material / cuts; `src/styles/common/profile.ts` has the
      shell fill that restores wall thickness under bevels, fillets and tiers.
-   - `printOrientation` and `printHint`.
+   - `printOrientation` ('faceDown' | 'faceUp', or a function of the params when it depends on
+     them, like organic's dome) and `printHint`.
 2. Import it in `src/styles/index.ts` and add it to `STYLES` (default first, plain box last).
 3. Add it to the specs in `test/styles.test.ts` (defaults parse, `outerBody` valid with the
    expected bounding box for every preset frame, body height matches `surfaceZ`, walls,

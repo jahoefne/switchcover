@@ -3,7 +3,8 @@
  *
  *  - 'build'   → cover mesh (quality as requested; the client sends 'preview').
  *  - 'export'  → cover rebuilt from the config (the client sends 'export' quality) + binary STL
- *                in the print orientation (config.print.orientation, 'style' → the style's).
+ *                in the print orientation (config.print.orientation, 'style' → the style's
+ *                default for the parsed params, see stylePrintOrientation).
  *  - 'testFit' → test-fit part of the pocket `req.featureId` (default: the first) + binary STL
  *                (same orientation rule, so the pocket prints exactly like it will in the cover).
  * Mesh buffers are copied out of getMesh() into fresh typed arrays (transferable); the STL is
@@ -16,7 +17,7 @@ import { buildTestFit } from '../geometry/buildTestFit';
 import type { BuildRequest, BuildResponse, BuildResult, CoverFrame } from '../geometry/contract';
 import { resolvePrintOrientation, toBinaryStl } from '../geometry/export/stl';
 import { createKit, withScope } from '../geometry/kit';
-import type { AnyCoverStyle } from '../styles';
+import { stylePrintOrientation, type AnyCoverStyle } from '../styles';
 
 export interface HandledResponse {
   response: BuildResponse;
@@ -44,17 +45,18 @@ interface Built {
   manifold: Manifold;
   frame: CoverFrame;
   style: AnyCoverStyle;
+  params: Record<string, unknown>;
 }
 
 function build(wasm: ManifoldToplevel, req: BuildRequest, config: CoverConfig): Omit<BuildResult, 'id'> {
   const kit = createKit(wasm, req.quality);
   return withScope(() => {
     const built: Built = req.kind === 'testFit' ? buildTestFit(kit, config, req.featureId) : buildCover(kit, config);
-    const { manifold, frame, style } = built;
+    const { manifold, frame, style, params } = built;
     const { positions, indices } = copyMesh(manifold);
     const stats = { ms: 0, tris: manifold.numTri(), volume: manifold.volume(), genus: manifold.genus() };
     if (req.kind === 'build') return { positions, indices, frame, stats };
-    const orientation = resolvePrintOrientation(config.print.orientation, style.printOrientation);
+    const orientation = resolvePrintOrientation(config.print.orientation, stylePrintOrientation(style, params));
     const header = `switchcover ${req.kind === 'testFit' ? 'test-fit' : 'cover'} ${style.id} ${orientation} mm`;
     const stl = toBinaryStl({ positions, indices }, { orientation, header });
     return { positions, indices, frame, stats, stl };

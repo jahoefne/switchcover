@@ -98,7 +98,8 @@ when the resolver reports `feature-overlap` (merged cuts merge holes; already re
   terminate + respawn (`worker/client.ts`).
 - Downloads rebuild at export quality — never export the preview mesh. `export` /
   `testFit` responses carry the binary STL in `config.print.orientation` (`'style'` →
-  `style.printOrientation`).
+  `style.printOrientation`, a constant or a function of the parsed params:
+  `stylePrintOrientation(style, params)` in src/styles).
 - Copy `getMesh()` buffers into fresh typed arrays and transfer them.
 
 ## WASM init

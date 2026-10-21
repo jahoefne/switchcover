@@ -13,6 +13,8 @@ interface ExportPanelProps {
   config: CoverConfig;
   frame: CoverFrame;
   style: AnyCoverStyle;
+  /** Parsed style params (the style's default orientation may depend on them). */
+  params: Record<string, unknown>;
   /** Stats of the preview build on screen (null before the first build). */
   stats: BuildStats | null;
   /** True when `stats` belong to an older config. */
@@ -40,6 +42,7 @@ export function ExportPanel({
   config,
   frame,
   style,
+  params,
   stats,
   statsStale,
   warnings,
@@ -51,7 +54,7 @@ export function ExportPanel({
   const [running, setRunning] = useState<'export' | 'testFit' | null>(null);
   const [fallbackUrl, setFallbackUrl] = useState<string | null>(null);
   const heights = heightSummary(frame);
-  const orientation = effectiveOrientation(config, style);
+  const orientation = effectiveOrientation(config, style, params);
   const hasPocket = frame.features.some((f) => f.kind === 'pocket');
   const errors = warnings.filter((w) => w.severity === 'error').length;
 

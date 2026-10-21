@@ -3,7 +3,7 @@
  * CoverStyle, import it here and append it to STYLES (keep the default first).
  */
 import type { z } from 'zod';
-import type { CoverStyle, Warning } from '../geometry/contract';
+import type { CoverStyle, PrintOrientation, Warning } from '../geometry/contract';
 import { boxStyle } from './box';
 import { facetedStyle } from './faceted';
 import { minimalStyle } from './minimal';
@@ -50,6 +50,15 @@ export function resolveStyle(id: string): { style: AnyCoverStyle; warnings: Warn
       },
     ],
   };
+}
+
+/**
+ * The style's default print orientation for these (parsed) params: `printOrientation` is a
+ * constant or a function of the params (see CoverStyle).
+ */
+export function stylePrintOrientation(style: AnyCoverStyle, params: Record<string, unknown>): PrintOrientation {
+  const o = style.printOrientation;
+  return typeof o === 'function' ? o(params) : o;
 }
 
 /** Validate raw style params with the style's schema; invalid → schema defaults + warning. */

@@ -12,7 +12,7 @@ import type { CoverFrame, EdgeProfile, Kit, Placed, StyleCtx } from '../src/geom
 import { OVERSHOOT, liveObjectCount, withScope } from '../src/geometry/kit';
 import { offsetPlaced, outlineWorld, placedDistance } from '../src/geometry/shape2d';
 import { outerPlaced, resolveLayout } from '../src/layout/resolve';
-import { getStyle, listStyles, type AnyCoverStyle } from '../src/styles';
+import { getStyle, listStyles, stylePrintOrientation, type AnyCoverStyle } from '../src/styles';
 import { availableEdgeRoom, bodyPlaced, edgeWidth, insideDistance, type EdgeWants } from '../src/styles/common/frame';
 import { offsetProfile, type Walls } from '../src/styles/common/profile';
 import { domeEnvelope } from '../src/styles/organic/dome';
@@ -220,7 +220,7 @@ describe.each(SPECS.map((s) => [s.id, s] as const))('%s style', (id, spec) => {
     expect(style.label.length).toBeGreaterThan(0);
     expect(style.description.length).toBeGreaterThan(20);
     expect(style.printHint.length).toBeGreaterThan(20);
-    expect(style.printOrientation).toBe(spec.orientation);
+    expect(stylePrintOrientation(style, spec.defaults)).toBe(spec.orientation);
     expect(style.params.parse({})).toEqual(spec.defaults);
     const keys = Object.keys(style.params.shape);
     expect(Object.keys(spec.defaults).sort()).toEqual([...keys].sort());
@@ -441,6 +441,16 @@ describe('organic dome', () => {
       expect(worst).toBeLessThan(0.2);
       return null;
     });
+  });
+
+  it('prints face down with a flat face and face up as soon as the face is domed', () => {
+    const style = styleOf('organic');
+    expect(typeof style.printOrientation).toBe('function');
+    expect(stylePrintOrientation(style, style.params.parse({}) as Params)).toBe('faceDown');
+    expect(stylePrintOrientation(style, style.params.parse({ domeSag: 0.1 }) as Params)).toBe('faceUp');
+    expect(stylePrintOrientation(style, style.params.parse({ domeSag: 3 }) as Params)).toBe('faceUp');
+    // the static form stays valid for the other styles
+    for (const id of ['minimal', 'faceted', 'stepped', 'box']) expect(typeof styleOf(id).printOrientation).toBe('string');
   });
 
   it('flat face without a dome; both sockets get the full flare (the pocket is spread for it)', () => {

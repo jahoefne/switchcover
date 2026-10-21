@@ -132,10 +132,11 @@ export const organicStyle: CoverStyle<typeof params> = {
     domeSag: { label: 'Dome height', min: 0, max: DOME_SAG_MAX, step: 0.1, unit: 'mm' },
     flareR: { label: 'Socket flare', min: 0, max: 12, step: 0.5, unit: 'mm' },
   },
-  // Static in the contract: face-down suits the flat face (domeSag = 0); a dome needs face-up.
-  printOrientation: 'faceDown',
+  // Face down suits the flat face; a domed face (domeSag > 0) would rest on its apex, so it
+  // prints face up.
+  printOrientation: (p) => (p.domeSag > 0 ? 'faceUp' : 'faceDown'),
   printHint:
-    'Flat face (dome 0): print face down; add supports inside the pockets (their floors bridge) and, if your slicer flags it, under the first millimetres of the edge fillet. With a dome the face is curved: switch the print orientation to face up and support the cavity ceiling instead.',
+    'Flat face (dome 0): print face down; add supports inside the pockets (their floors bridge) and, if your slicer flags it, under the first millimetres of the edge fillet. With a dome the face is curved, so the default switches to face up: support the cavity ceiling instead.',
   // A finger notch may reach into the fillet (a dimple in the pebble's rounded edge; with the
   // default fillet its rim only touches the fillet's start) instead of growing the cover.
   allowsNotchInEdge: true,

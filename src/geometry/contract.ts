@@ -64,6 +64,9 @@
 import type { z } from 'zod';
 import type { CrossSection, Manifold, ManifoldToplevel } from 'manifold-3d';
 import type { CoverConfig } from '../config/schema';
+import type { PrintOrientation } from './export/stl';
+
+export type { PrintOrientation };
 
 // ---------------------------------------------------------------------------
 // Basic vectors (tuples, so they can be handed to manifold-3d unchanged)
@@ -319,6 +322,13 @@ export interface BooleanParamUi {
 export type StyleParamUi = NumberParamUi | BooleanParamUi;
 
 /**
+ * The function form of `CoverStyle.printOrientation`. Declared through a method signature so it
+ * is bivariant in `P` like the style's other methods: a concrete `CoverStyle<S>` stays assignable
+ * to `AnyCoverStyle` (params erased to a plain record) under strictFunctionTypes.
+ */
+export type PrintOrientationOf<P> = { bivarianceHack(params: P): PrintOrientation }['bivarianceHack'];
+
+/**
  * A cover style plugin. Register it in src/styles/index.ts.
  *
  * `S` is the zod schema of the style's params; `P` the parsed params type.
@@ -333,7 +343,12 @@ export interface CoverStyle<S extends z.ZodObject, P = z.infer<S>> {
   migrate?(old: unknown, from: number): unknown;
   /** Form metadata per param (labels, slider ranges, limit clamps); params without it get defaults. */
   ui?: Partial<Record<keyof P, StyleParamUi>>;
-  printOrientation: 'faceDown' | 'faceUp';
+  /**
+   * Default print orientation ('style' in config.print.orientation): a constant, or a function
+   * of the params when it depends on them (organic prints face up once the face is domed).
+   * Callers resolve it with `stylePrintOrientation(style, params)` (src/styles).
+   */
+  printOrientation: PrintOrientation | PrintOrientationOf<P>;
   printHint: string;
   /**
    * Finger notches may sit in the style's edge zone (the bevel, fillet or tier step that

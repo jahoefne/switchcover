@@ -1,6 +1,6 @@
 import type { CoverConfig } from '../../config/schema';
 import type { StyleLimits } from '../../geometry/contract';
-import { listStyles, type AnyCoverStyle } from '../../styles';
+import { listStyles, stylePrintOrientation, type AnyCoverStyle } from '../../styles';
 import type { ConfigUpdater } from '../hooks/useConfig';
 import { fmt } from '../derive';
 import { CheckField, NumberField, SelectField, SliderField } from '../components/fields';
@@ -103,7 +103,7 @@ export function StylePanel({ config, style, params, limits, update }: StylePanel
         }
       })}
       <p className="print-hint">
-        <strong>Print:</strong> {style.printOrientation === 'faceDown' ? 'face down' : 'face up'} by default. {style.printHint}
+        <strong>Print:</strong> {stylePrintOrientation(style, params) === 'faceDown' ? 'face down' : 'face up'} by default. {style.printHint}
       </p>
     </>
   );
