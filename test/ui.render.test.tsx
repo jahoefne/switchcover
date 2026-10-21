@@ -78,6 +78,26 @@ describe('App', () => {
     for (const s of listStyles()) expect(labels).toContain(s.label);
   });
 
+  it('the combo preset card draws the shifted grid, the lying Bilresa above the socket and the taller cover', () => {
+    renderApp();
+    const card = screen.getByRole('button', { name: 'CH 1×1 — switch + socket combo' });
+    const svg = card.querySelector('svg')!;
+    // 1 × 2 grid, pitch 31, shifted up 3.5: cells centred at y = +19 and −12 (SVG y = −world y)
+    const cells = [...svg.querySelectorAll('.grid-cells rect')].map((r) => Number(r.getAttribute('y')) + Number(r.getAttribute('height')) / 2);
+    expect(cells).toHaveLength(2);
+    expect(cells[0]).toBeCloseTo(-19, 6);
+    expect(cells[1]).toBeCloseTo(12, 6);
+    const pocket = svg.querySelector('.f-pocket')!;
+    expect(pocket.getAttribute('transform')).toMatch(/translate\(0 -34\.9\d*\) rotate\(-90\)/);
+    expect(svg.querySelector('.f-outlet')!.getAttribute('transform')).toBe('translate(0 12)');
+    // the cover outline reaches above the plate (it grows upwards only) and the view box shows it
+    const outline = svg.querySelector('.cover-outline')!;
+    const plate = svg.querySelector('.plate')!;
+    expect(Number(outline.getAttribute('y'))).toBeLessThan(Number(plate.getAttribute('y')) - 10);
+    const [, vy] = svg.getAttribute('viewBox')!.split(' ').map(Number);
+    expect(vy).toBeLessThanOrEqual(Number(outline.getAttribute('y')));
+  });
+
   it('loads a preset from its card', async () => {
     renderApp();
     fireEvent.click(screen.getByRole('button', { name: 'CH 2×2 — two switches + two sockets' }));

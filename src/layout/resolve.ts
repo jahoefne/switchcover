@@ -373,7 +373,14 @@ function bridgeHole(config: CoverConfig, id: string, anchor: Vec2, pocket: Place
   return { holes: [hole], warnings };
 }
 
-/** Pocket end farther from the plate centre (ties: lower, then right). */
+/**
+ * Pocket end farther from the plate centre (the origin, whatever the grid offset). Ties (within
+ * 1 µm): the lower end, then the right (+x) end — so a vertical pocket on the plate's horizontal
+ * centre line gets its notch at the bottom and a horizontal pocket on the vertical centre line
+ * (the combo plate's Bilresa above its socket) at its +x end, whichever way round it is turned.
+ * The notch is one of the outline's requirement boxes (see "Outer size"), so it always lies
+ * inside the cover, off-centre or not.
+ */
 function notchCentre(pocket: Placed): Vec2 {
   const c = shapeCore(pocket.shape);
   const alongY = c.hy >= c.hx;
