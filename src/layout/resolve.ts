@@ -12,7 +12,10 @@
  *  3. Automatic spreading of pockets that are closer than minWall + the two features' edge
  *     allowances (StyleLimits.edgeAllowance / pocketEdgeAllowance) to a neighbour along a grid
  *     axis. Pocket↔pocket conflicts move both symmetrically; pocket↔opening conflicts move only
- *     the pocket (outlets must stay on their socket).
+ *     the pocket (outlets must stay on their socket). A pocket is never pushed so far that its
+ *     rocker (anchor) leaves its access hole unless minWall itself needs it: the allowances are
+ *     cosmetic, reaching the old switch is not; the edges between the two then shrink
+ *     (edge-reduced note).
  *  4. Per-pocket strip, access holes (policy below) and finger notch.
  *  5. Outer size (auto or manual ≥ auto) and centre; see "Outer size".
  *  6. Warnings.
@@ -83,6 +86,7 @@ import type {
 import {
   containmentMargin,
   coreWorld,
+  insideDistance,
   offsetPlaced,
   offsetShape,
   placedBounds,
@@ -188,8 +192,44 @@ function solveSeparation(gap: (s: number) => number, target: number): number {
   return hi;
 }
 
-/** Spread pockets apart along grid axes until every same-row/column pair keeps its target gap. */
-function spreadPockets(drafts: Draft[], target: (a: Draft, b: Draft) => number): void {
+/**
+ * How far (in units of the pair separation s; the pocket moves by s · share along `dir`) a pocket
+ * may still move before its rocker (anchor) leaves its access hole. Infinity when the pocket does
+ * not move, has no hole, or its rocker is already outside the hole (e.g. moved there by dx/dy).
+ */
+function accessReach(d: Draft, share: number, dir: Vec2, holeOf: (d: Draft) => Placed | null): number {
+  if (d.kind !== 'pocket' || share <= 0) return Infinity;
+  const hole = holeOf(d);
+  if (!hole || insideDistance(hole, d.anchor) < 0) return Infinity;
+  // insideDistance is concave in the point, the anchor moves linearly relative to the hole: the
+  // anchor stays inside on an interval [0, t*].
+  const inside = (t: number) => insideDistance(shifted(hole, dir[0] * t * share, dir[1] * t * share), d.anchor) >= 0;
+  let hi = 1;
+  while (inside(hi) && hi < 4096) hi *= 2;
+  if (inside(hi)) return Infinity;
+  let lo = 0;
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    if (inside(mid)) lo = mid;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/**
+ * Spread pockets apart along grid axes until every same-row/column pair keeps its target gap
+ * (minWall + both edge allowances). A pocket is never pushed beyond the point where its rocker
+ * would leave its access hole (the rocker must stay reachable), unless minWall itself needs it:
+ * then the pair stops at its structural minimum and the style's edges between them shrink
+ * (edge-reduced). Returns the ids of pockets held back like that.
+ */
+function spreadPockets(
+  drafts: Draft[],
+  target: (a: Draft, b: Draft) => number,
+  minGap: number,
+  holeOf: (d: Draft) => Placed | null,
+): Set<string> {
+  const held = new Set<string>();
   for (let iter = 0; iter < 200; iter++) {
     let moved = 0;
     for (let i = 0; i < drafts.length; i++) {
@@ -211,22 +251,31 @@ function spreadPockets(drafts: Draft[], target: (a: Draft, b: Draft) => number):
         const negShare = 1 - posShare;
         const pp = placedOf(pos);
         const pn = placedOf(neg);
-        const s = solveSeparation(
-          (t) =>
-            placedDistance(
-              shifted(pp, axis[0] * t * posShare, axis[1] * t * posShare),
-              shifted(pn, -axis[0] * t * negShare, -axis[1] * t * negShare),
-            ),
-          target(pos, neg),
+        const gap = (t: number) =>
+          placedDistance(
+            shifted(pp, axis[0] * t * posShare, axis[1] * t * posShare),
+            shifted(pn, -axis[0] * t * negShare, -axis[1] * t * negShare),
+          );
+        const full = solveSeparation(gap, target(pos, neg));
+        if (full <= 0) continue;
+        const reach = Math.min(
+          accessReach(pos, posShare, axis, holeOf),
+          accessReach(neg, negShare, [-axis[0], -axis[1]], holeOf),
         );
+        let s = full;
+        if (reach < full) {
+          s = Math.max(reach, solveSeparation(gap, minGap));
+          if (s < full - 1e-9) for (const d of [pos, neg]) if (d.kind === 'pocket') held.add(d.id);
+        }
         if (s <= 0) continue;
         pos.spread = [pos.spread[0] + axis[0] * s * posShare, pos.spread[1] + axis[1] * s * posShare];
         neg.spread = [neg.spread[0] - axis[0] * s * negShare, neg.spread[1] - axis[1] * s * negShare];
         moved = Math.max(moved, s);
       }
     }
-    if (moved < 1e-7) return;
+    if (moved < 1e-7) return held;
   }
+  return held;
 }
 
 interface HoleResult {
@@ -236,22 +285,20 @@ interface HoleResult {
 
 const MIN_HOLE = 0.5;
 
-/** The single bridge access hole of one pocket (see the policy in the file header). */
-function bridgeHole(config: CoverConfig, id: string, anchor: Vec2, pocket: Placed): HoleResult {
+/**
+ * Geometry of a pocket's bridge access hole (see the policy in the file header), or why there is
+ * none. It depends only on the pocket's shape and rotation and the Bilresa settings, and is
+ * centred on the pocket.
+ */
+export function bridgeHoleShape(config: CoverConfig, pocket: Placed): { hole: Placed } | { why: string } {
   const { bilresa } = config;
   const { strip, hiddenMargin, stripLedge } = bilresa;
-  const warnings: Warning[] = [];
-  const none = (why: string): HoleResult => ({
-    holes: [],
-    warnings: [{ code: WARNING_CODES.accessNone, severity: 'warning', featureId: id, message: `Pocket ${id}: ${why}` }],
-  });
-
   const core = shapeCore(pocket.shape);
   const outlineW = 2 * (core.hx + core.r);
   const width = Math.min(bilresa.access.w, outlineW - 2 * hiddenMargin);
   const wanted = strip.l - 2 * stripLedge - 2 * Math.abs(strip.dy);
   if (width < MIN_HOLE || wanted < MIN_HOLE) {
-    return none('no access hole fits (check the access width, hidden margin, strip length and glue ledges).');
+    return { why: 'no access hole fits (check the access width, hidden margin, strip length and glue ledges).' };
   }
   const inset = offsetPlaced(pocket, -hiddenMargin);
   const holeOf = (len: number): Placed => ({
@@ -272,8 +319,23 @@ function bridgeHole(config: CoverConfig, id: string, anchor: Vec2, pocket: Place
     }
     length = Math.floor(lo * 100) / 100;
   }
-  if (length < MIN_HOLE) return none('no access hole fits under the Bilresa (check the access width and hidden margin).');
-  const hole = holeOf(length);
+  if (length < MIN_HOLE) return { why: 'no access hole fits under the Bilresa (check the access width and hidden margin).' };
+  return { hole: holeOf(length) };
+}
+
+/** The single bridge access hole of one pocket and its warnings (see the policy in the file header). */
+function bridgeHole(config: CoverConfig, id: string, anchor: Vec2, pocket: Placed): HoleResult {
+  const { strip } = config.bilresa;
+  const warnings: Warning[] = [];
+  const shape = bridgeHoleShape(config, pocket);
+  if ('why' in shape) {
+    return {
+      holes: [],
+      warnings: [{ code: WARNING_CODES.accessNone, severity: 'warning', featureId: id, message: `Pocket ${id}: ${shape.why}` }],
+    };
+  }
+  const { hole } = shape;
+  const width = (hole.shape as Extract<Shape2D, { kind: 'roundedRect' }>).w;
 
   // Tool access: the gaps beside the strip (in the Bilresa's frame; the strip spans the hole).
   const left = strip.dx - strip.w / 2 + width / 2;
@@ -488,20 +550,27 @@ export function resolveLayout(config: CoverConfig, style?: ResolveStyle): CoverF
   const allow = edgeAllowances(limits);
   const allowOf = (d: Draft) => (d.kind === 'pocket' ? allow.pocket : d.module.role === 'outlet' ? allow.opening : 0);
   const targetGap = (a: Draft, b: Draft) => cover.minWall + allowOf(a) + allowOf(b);
-  spreadPockets(drafts, targetGap);
+  const holeOf = (d: Draft): Placed | null => {
+    const h = bridgeHoleShape(config, placedOf(d));
+    return 'hole' in h ? h.hole : null;
+  };
+  const held = spreadPockets(drafts, targetGap, cover.minWall, holeOf);
   for (const d of drafts) {
     const dist = Math.hypot(d.spread[0], d.spread[1]);
     if (d.kind === 'pocket' && dist > 1e-3) {
       const dir =
         Math.abs(d.spread[1]) >= Math.abs(d.spread[0]) ? (d.spread[1] > 0 ? 'up' : 'down') : d.spread[0] > 0 ? 'right' : 'left';
+      const why = held.has(d.id)
+        ? ` (no further, so its rocker stays inside the access hole; the edges between them are narrower)`
+        : '';
       warnings.push({
         code: WARNING_CODES.pocketSpread,
         severity: 'info',
         featureId: d.id,
         message:
           allow.opening + allow.pocket > 0
-            ? `Pocket ${d.id} moved ${fmt(dist)} mm ${dir} to keep a ${fmt(cover.minWall)} mm wall (plus room for this style's edges) to its neighbour.`
-            : `Pocket ${d.id} moved ${fmt(dist)} mm ${dir} to keep a ${fmt(cover.minWall)} mm wall to its neighbour.`,
+            ? `Pocket ${d.id} moved ${fmt(dist)} mm ${dir} to keep a ${fmt(cover.minWall)} mm wall (plus room for this style's edges) to its neighbour${why}.`
+            : `Pocket ${d.id} moved ${fmt(dist)} mm ${dir} to keep a ${fmt(cover.minWall)} mm wall to its neighbour${why}.`,
       });
     }
   }

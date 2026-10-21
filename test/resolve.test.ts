@@ -149,6 +149,69 @@ describe('spreading', () => {
     expect(ys[2]).toBeCloseTo(-60 - 12.6, 4);
   });
 
+  /** The switch + socket combo layout (one 90 × 90 plate), built by hand. */
+  const comboLike = (dy = 15.9): CoverConfig => {
+    const c = withGrid(1, 2, [bilresa(0, 0, { rot: 90, dy }), { col: 0, row: 1, role: 'outlet', rot: 0, dx: 0, dy: 0 }]);
+    c.plate.h = 90;
+    c.grid = { ...c.grid, pitchY: 31, offsetY: 3.5 };
+    return c;
+  };
+  const wide: StyleLimits = { minFrame: 0, minFrontZ: 0, maxEdgeR: Infinity, edgeAllowance: 6, pocketEdgeAllowance: 1.5 };
+
+  it('stops spreading where the rocker would leave its access hole; the edges shrink instead', () => {
+    // no allowances: 3.6 mm ≥ minWall, nothing moves
+    const plain = resolveLayout(comboLike());
+    expect(pockets(plain)[0].placed.y).toBeCloseTo(34.9, 9);
+    expect(codes(plain)).not.toContain(WARNING_CODES.pocketSpread);
+    // 9.5 mm wanted (2 + 6 + 1.5) would put the pocket at 40.8 and its 34 mm hole (y ± 17) above
+    // the rocker at y = 19: it stops at 36, the rocker on the hole's lower edge
+    const f = resolveLayout(comboLike(), { limits: wide });
+    const [p] = pockets(f);
+    const [o] = openings(f);
+    expect(p.placed.y).toBeCloseTo(36, 6);
+    expect(pointInPlaced(p.anchor, p.holes[0])).toBe(true);
+    expect(p.holes[0].y - 17).toBeCloseTo(19, 6);
+    expect(placedDistance(p.placed, o.placed)).toBeCloseTo(4.7, 6);
+    expect(codes(f)).toContain(WARNING_CODES.edgeReduced);
+    expect(codes(f)).not.toContain(WARNING_CODES.accessUncovered);
+    expect(f.warnings.find((w) => w.code === WARNING_CODES.pocketSpread)?.message).toMatch(/moved 1\.1 mm up .*rocker stays inside the access hole/);
+    expect(f.warnings.filter((w) => w.severity !== 'info')).toEqual([]);
+  });
+
+  it('minWall still wins over access (then the rocker is reported uncovered)', () => {
+    const c = comboLike();
+    c.cover.minWall = 6; // pocket bottom ≥ 11 + 6 → centre 37.3, hole from 20.3
+    const f = resolveLayout(c);
+    const [p] = pockets(f);
+    expect(placedDistance(p.placed, openings(f)[0].placed)).toBeCloseTo(6, 6);
+    expect(p.placed.y).toBeCloseTo(37.3, 6);
+    expect(f.warnings.find((w) => w.code === WARNING_CODES.accessUncovered)?.severity).toBe('error');
+  });
+
+  it('does not hold back a pocket whose rocker is already outside its hole (dx/dy by hand)', () => {
+    const c = comboLike();
+    c.modules[0].dx = 25; // the rotated hole spans x ± 19.56 around the pocket: the rocker (x 0) is outside
+    const f = resolveLayout(c, { limits: wide });
+    const [p] = pockets(f);
+    expect(placedDistance(p.placed, openings(f)[0].placed)).toBeCloseTo(9.5, 6);
+    expect(codes(f)).not.toContain(WARNING_CODES.edgeReduced);
+    expect(codes(f)).toContain(WARNING_CODES.accessUncovered);
+  });
+
+  it('holds back both pockets of a pair symmetrically', () => {
+    const c = presetConfig('ch-sd-1x2v-two-switches');
+    c.modules = c.modules.map((m) => ({ ...m, rot: 0 }));
+    // 42 mm wanted between the two unrotated pockets: 26.3 mm each, but the 39.12 mm long holes
+    // (y ± 19.56) keep their rockers only up to 19.56
+    const f = resolveLayout(c, { limits: { minFrame: 0, minFrontZ: 0, maxEdgeR: Infinity, edgeAllowance: 20 } });
+    const [top, bottom] = pockets(f);
+    expect(top.placed.y - 30).toBeCloseTo(19.56, 6);
+    expect(bottom.placed.y + 30).toBeCloseTo(-19.56, 6);
+    for (const p of [top, bottom]) expect(pointInPlaced(p.anchor, p.holes[0])).toBe(true);
+    expect(codes(f)).toContain(WARNING_CODES.edgeReduced);
+    expect(codes(f)).not.toContain(WARNING_CODES.accessUncovered);
+  });
+
   it('reports remaining overlaps (diagonal neighbours are not spread)', () => {
     const c = withGrid(2, 2, [bilresa(0, 0, { dx: 20, dy: -20 }), bilresa(1, 1, { dx: -20, dy: 20 })]);
     expect(codes(resolveLayout(c))).toContain(WARNING_CODES.featureOverlap);
