@@ -51,13 +51,13 @@ export const DEFAULT_BILRESA: BilresaSettings = {
   /** Gap between the Bilresa outline and the pocket wall, per side. */
   pocketClearance: 0.3,
   /** Pocket floor thickness (clamped to ≥ stripDepth + 1.2 by the resolver). */
-  floorT: 2.2,
+  floorT: 2.4,
   /** Access holes stay this far inside the pocket outline (hidden by the Bilresa). */
-  hiddenMargin: 4,
+  hiddenMargin: 3,
   /** Finger notch at the pocket's far end from the plate centre. */
   notch: { enabled: true, d: 16 },
   /** Access rect (w across, h along the Bilresa's long axis), centred on the module anchor. */
-  access: { w: 32, h: 56 },
+  access: { w: 34, h: 56 },
   /**
    * PLACEHOLDER — the real IKEA metal strip has NOT been measured yet.
    * Assumed: stadium 44 × 7 mm centred on the Bilresa's long axis, protruding 1.0 mm from
@@ -67,7 +67,7 @@ export const DEFAULT_BILRESA: BilresaSettings = {
    */
   strip: { shape: 'stadium', l: 44, w: 7, protrusion: 1.0, dx: 0, dy: 0 },
   /** Keep access holes this far from the strip outline (the strip island stays attached). */
-  stripMargin: 3,
+  stripMargin: 2.5,
 };
 
 export const DEFAULT_COVER: CoverSettings = {
@@ -160,4 +160,4 @@ export const ACCESS_HOLE_CORNER_R = 1.5;
 /** Covers larger than this (either side, mm) probably do not fit the print bed. */
 export const MAX_PRINT_SIZE = 250;
 /** Opening tunnels deeper than this (frontZ − plate depth, mm) may stop plugs seating. */
-export const MAX_OPENING_TUNNEL = 8;
+export const MAX_OPENING_TUNNEL = 15;

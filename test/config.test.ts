@@ -16,10 +16,10 @@ describe('defaults', () => {
     expect(DEFAULT_BILRESA).toMatchObject({
       pocketDepth: 9,
       pocketClearance: 0.3,
-      floorT: 2.2,
-      hiddenMargin: 4,
-      access: { w: 32, h: 56 },
-      stripMargin: 3,
+      floorT: 2.4,
+      hiddenMargin: 3,
+      access: { w: 34, h: 56 },
+      stripMargin: 2.5,
       strip: { shape: 'stadium', l: 44, w: 7, protrusion: 1, dx: 0, dy: 0 },
     });
     expect(DEFAULT_COVER).toMatchObject({ skinT: 3, skirtT: 2.4, minWall: 2, clearance: 1, rockerGap: 2, margin: 4 });

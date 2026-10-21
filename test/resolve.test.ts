@@ -243,16 +243,16 @@ describe('access holes', () => {
     }
   }
 
-  it('default pocket: two holes left/right of the strip, mirrored, narrow-warning', () => {
+  it('default pocket: two holes left/right of the strip, mirrored, wide enough for a fingertip', () => {
     const c = presetConfig('ch-sd-1x1');
     const f = resolveLayout(c);
     const [p] = pockets(f);
     expect(p.holes).toHaveLength(2);
     expect(p.holes[0].x).toBeCloseTo(-p.holes[1].x, 9);
     checkHoles(p, c);
-    // 32 mm access rect − 2·(3.5 + 0.2 + 3) band → 9.3 mm per side
-    expect((p.holes[0].shape as { w: number }).w).toBeCloseTo(9.3, 9);
-    expect(codes(f)).toContain(WARNING_CODES.accessNarrow);
+    // 34 mm access rect − 2·(3.5 + 0.2 + 2.5) band → 10.8 mm per side (≥ MIN_ACCESS_WIDTH)
+    expect((p.holes[0].shape as { w: number }).w).toBeCloseTo(10.8, 9);
+    expect(codes(f)).not.toContain(WARNING_CODES.accessNarrow);
   });
 
   it.each([
@@ -337,8 +337,12 @@ describe('features', () => {
 });
 
 describe('warnings', () => {
-  it('warns about deep opening tunnels on socket presets', () => {
-    expect(codes(resolveLayout(presetConfig('ch-sd-1x2v-switch-socket')))).toContain(WARNING_CODES.openingDeep);
+  it('warns about deep opening tunnels only when the face sits more than 15 mm above the plate', () => {
+    // default: frontZ = 12 + 2 + 2.4 + 9 = 25.4 → 13.4 mm tunnel, no warning
+    expect(codes(resolveLayout(presetConfig('ch-sd-1x2v-switch-socket')))).not.toContain(WARNING_CODES.openingDeep);
+    const deep = presetConfig('ch-sd-1x2v-switch-socket');
+    deep.bilresa.pocketDepth = 12; // → 16.4 mm tunnel
+    expect(codes(resolveLayout(deep))).toContain(WARNING_CODES.openingDeep);
     expect(codes(resolveLayout(presetConfig('ch-sd-1x1')))).not.toContain(WARNING_CODES.openingDeep);
   });
 
