@@ -120,3 +120,6 @@ min z = 0. Never mirror / negative scale (the slicer's top view then looks mirro
 that is correct). `export/stl.ts`: `toBinaryStl(manifold | {positions, indices},
 {orientation})`, `stlTriangleCount`, `parseBinaryStl` (merges identical vertices, so a
 watertight STL goes straight back into `Manifold.ofMesh`), `resolvePrintOrientation`.
+The writer judges triangles by float32 position (`stlTriangles`): collapsed ones (two corners
+at one position) are dropped, zero-area caps (three collinear corners) are removed by splitting
+the triangle across their long edge, so no T-junction is left.
