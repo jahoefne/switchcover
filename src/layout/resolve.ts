@@ -14,10 +14,18 @@
  *     axis. Pocket↔pocket conflicts move both symmetrically; pocket↔opening conflicts move only
  *     the pocket (outlets must stay on their socket).
  *  4. Per-pocket strip, access holes (policy below) and finger notch.
- *  5. Outer size (auto or manual ≥ auto), symmetric about the plate centre; see "Outer size".
+ *  5. Outer size (auto or manual ≥ auto) and centre; see "Outer size".
  *  6. Warnings.
  *
- * Outer size (all containments exact, see growToContain / containmentMargin):
+ * Outer size (all containments exact, see growToContain / containmentMargin): the automatic
+ * outline is the UNION of the requirement boxes below — each side goes only as far out as
+ * something needs it — so outer.cx / outer.cy may leave the plate centre (a Bilresa above the
+ * plate grows the cover upwards only). Content that is symmetric about the plate centre keeps a
+ * centred outline. A manual size ≥ auto is centred on the automatic outline's centre. The plate
+ * (and its collision box) always stays at the origin.
+ *  - corners: where a requirement pokes out of the outline's corner arc, the two sides of that
+ *    corner grow by the same amount (growCorners).
+ *
  *  - corner radius R = StyleLimits.cornerR, clamped to ≥ rp + skirtT (rp = plate.cornerR +
  *    clearance, the plate zone's corner) and ≤ half the smaller side; default rp + skirtT.
  *  - plate: the plate zone (plate + clearance) offset by s = max(skirtT, edgeInset(budget)) must
@@ -40,7 +48,7 @@
  *    rim edge inside the outline, and the notch's opening may cut into the bevel / fillet / tier
  *    step. A Ø14 notch then fits the plate-driven size of every 1×1 preset with every style;
  *    where a spread pocket's notch still sets the size (faceted switch + socket) the cover grows
- *    by minWall + the rim allowance only.
+ *    by minWall + the rim allowance only, and only on the notch's side.
  *
  * Access-hole policy (one "bridge" hole per pocket, in the pocket's own unrotated frame):
  *   a rounded rect (corner ACCESS_HOLE_CORNER_R) centred on the POCKET centre,
@@ -321,37 +329,72 @@ function notchCentre(pocket: Placed): Vec2 {
   return ends[0];
 }
 
-/** Grow a symmetric rounded rect (half extents hw, hh, corner R) until `p` fits inside. */
-function growToContain(hw: number, hh: number, R: number, p: Placed): [number, number] {
+/** Axis-aligned box in world mm (the outer outline before its corners are rounded). */
+export interface Box2D {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
+/** The degenerate box at the plate centre the outline grows from. */
+const ORIGIN_BOX: Box2D = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
+
+/** Corners of a box as (sign x, sign y): +x+y, −x+y, −x−y, +x−y. */
+const CORNERS: ReadonlyArray<readonly [1 | -1, 1 | -1]> = [
+  [1, 1],
+  [-1, 1],
+  [-1, -1],
+  [1, -1],
+];
+
+/**
+ * Grow a rounded rect (box `box`, corner radius R) until `p` fits inside: each side moves out
+ * only as far as `p` needs on that side (bounding box), then the corners (growCorners).
+ */
+function growToContain(box: Box2D, R: number, p: Placed): Box2D {
   const b = placedBounds(p);
-  hw = Math.max(hw, Math.abs(b.minX), Math.abs(b.maxX));
-  hh = Math.max(hh, Math.abs(b.minY), Math.abs(b.maxY));
-  return growCorners(hw, hh, R, p);
+  const grown: Box2D = {
+    minX: Math.min(box.minX, b.minX),
+    maxX: Math.max(box.maxX, b.maxX),
+    minY: Math.min(box.minY, b.minY),
+    maxY: Math.max(box.maxY, b.maxY),
+  };
+  return growCorners(grown, R, p);
 }
 
 /**
- * Corner part of growToContain: grow hw and hh by the same amount until `p`'s rounded corners
- * fit the outline's corner arcs (`p` is assumed to fit the bounding box already).
+ * Corner part of growToContain (`p` is assumed to fit the box already): where `p`'s rounded
+ * corner pokes out of the outline's corner arc, the two sides of THAT corner grow by the same
+ * amount (diagonally) until it fits. Content that is symmetric about the plate centre therefore
+ * grows symmetrically, exactly as a centred outline would.
  */
-function growCorners(hw: number, hh: number, R: number, p: Placed): [number, number] {
+function growCorners(box: Box2D, R: number, p: Placed): Box2D {
   const { r } = shapeCore(p.shape);
-  if (r >= R) return [hw, hh]; // bounding-box containment is sufficient
+  if (r >= R) return box; // bounding-box containment is sufficient
   const rho = R - r;
-  let grow = 0;
+  const grow = [0, 0, 0, 0];
   for (const [vx, vy] of coreWorld(p)) {
-    const ex = Math.abs(vx) - (hw - R);
-    const ey = Math.abs(vy) - (hh - R);
-    if (ex <= 0 || ey <= 0 || Math.hypot(ex, ey) <= rho + EPS) continue;
-    let lo = 0;
-    let hi = Math.min(ex, ey);
-    for (let i = 0; i < 60; i++) {
-      const mid = (lo + hi) / 2;
-      if (Math.hypot(Math.max(0, ex - mid), Math.max(0, ey - mid)) <= rho) hi = mid;
-      else lo = mid;
-    }
-    grow = Math.max(grow, hi);
+    CORNERS.forEach(([sx, sy], k) => {
+      const ex = sx > 0 ? vx - (box.maxX - R) : box.minX + R - vx;
+      const ey = sy > 0 ? vy - (box.maxY - R) : box.minY + R - vy;
+      if (ex <= 0 || ey <= 0 || Math.hypot(ex, ey) <= rho + EPS) return;
+      let lo = 0;
+      let hi = Math.min(ex, ey);
+      for (let i = 0; i < 60; i++) {
+        const mid = (lo + hi) / 2;
+        if (Math.hypot(Math.max(0, ex - mid), Math.max(0, ey - mid)) <= rho) hi = mid;
+        else lo = mid;
+      }
+      grow[k] = Math.max(grow[k], hi);
+    });
   }
-  return [hw + grow, hh + grow];
+  return {
+    maxX: box.maxX + Math.max(grow[0], grow[3]),
+    minX: box.minX - Math.max(grow[1], grow[2]),
+    maxY: box.maxY + Math.max(grow[0], grow[1]),
+    minY: box.minY - Math.max(grow[2], grow[3]),
+  };
 }
 
 const ceil2 = (n: number) => Math.ceil(n * 100 - 1e-6) / 100;
@@ -552,26 +595,30 @@ export function resolveLayout(config: CoverConfig, style?: ResolveStyle): CoverF
     Math.max(limits.cornerR ?? 0, rp + cover.skirtT),
     Math.min(contentBox.maxX - contentBox.minX, contentBox.maxY - contentBox.minY) / 2,
   );
-  let [hw, hh] = growToContain(0, 0, cornerR, plateContent);
+  let box = growToContain(ORIGIN_BOX, cornerR, plateContent);
   // Where the plate's corner is tangent to the cavity's, the meshed arcs (chords inside the true
   // arc) would cut into the plate box: leave the largest chord error of the cavity's corner arc
   // at preview quality (10° segments, see kit/init.ts) as extra room in the corners only.
   const chordTol = Math.max(0, cornerR - cover.skirtT) * (1 - Math.cos((5 * Math.PI) / 180)) + 0.01;
-  [hw, hh] = growCorners(hw, hh, cornerR, offsetPlaced(plateContent, chordTol));
+  box = growCorners(box, cornerR, offsetPlaced(plateContent, chordTol));
   const baseMargin = Math.max(cover.minWall + cover.margin, limits.minFrame);
   for (const f of features) {
     const a = f.kind === 'pocket' ? allow.pocket : f.role === 'outlet' ? allow.opening : 0;
-    [hw, hh] = growToContain(hw, hh, cornerR, offsetPlaced(f.placed, baseMargin + a));
+    box = growToContain(box, cornerR, offsetPlaced(f.placed, baseMargin + a));
   }
   // Finger notches (see the file header): keep the notch and its rim edge off the style's edge,
   // or, when the style allows notches in its edge zone, just the backing and the rim inside.
   const notchFrame = style?.allowsNotchInEdge ? cover.minWall : Math.max(cover.minWall, limits.minFrame);
   const notchMargin = notchFrame + allow.pocket;
   for (const f of features) {
-    if (f.kind === 'pocket' && f.notch) [hw, hh] = growToContain(hw, hh, cornerR, offsetPlaced(f.notch, notchMargin));
+    if (f.kind === 'pocket' && f.notch) box = growToContain(box, cornerR, offsetPlaced(f.notch, notchMargin));
   }
-  const autoW = ceil2(2 * hw);
-  const autoH = ceil2(2 * hh);
+  // The outline is the requirement box (each side only as far out as something needs it), so
+  // its centre may leave the plate centre; sizes are ceiled to 0.01 around that centre.
+  const autoW = ceil2(box.maxX - box.minX);
+  const autoH = ceil2(box.maxY - box.minY);
+  const cx = (box.minX + box.maxX) / 2 + 0;
+  const cy = (box.minY + box.maxY) / 2 + 0;
   let w = autoW;
   let h = autoH;
   if (cover.size !== 'auto') {
@@ -611,7 +658,7 @@ export function resolveLayout(config: CoverConfig, style?: ResolveStyle): CoverF
   }
 
   return {
-    outer: { w, h, cx: 0, cy: 0, cornerR: Math.min(cornerR, w / 2, h / 2), autoW, autoH },
+    outer: { w, h, cx, cy, cornerR: Math.min(cornerR, w / 2, h / 2), autoW, autoH },
     plate: { w: plate.w, h: plate.h, protrusion: plate.depth, cornerR: plate.cornerR, clearance: cover.clearance },
     frontZ,
     skinT: cover.skinT,

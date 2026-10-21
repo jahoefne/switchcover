@@ -22,6 +22,7 @@ import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BILRESA_VARIANTS } from '../../config/defaults';
 import type { BilresaVariant, CoverFrame } from '../../geometry/contract';
+import { needsRefit } from './fit';
 import { bilresaGhostPlacement } from './ghost';
 
 export interface ViewerMesh {
@@ -85,8 +86,8 @@ export class CoverScene {
   private options: SceneOptions = { showPlate: true, showBilresa: true, wireframe: false };
   private ghostGeneration = 0;
   private hasMesh = false;
-  /** Outer w × h the camera was last fitted to (refit when either changes a lot). */
-  private fittedSize: [number, number] = [0, 0];
+  /** Outer w, h, cx, cy the camera was last fitted to (refit when the outline changes a lot). */
+  private fitted: [number, number, number, number] = [0, 0, 0, 0];
   private raf = 0;
   private disposed = false;
   /** Called when a ghost model fails to load (once per variant). */
@@ -213,11 +214,7 @@ export class CoverScene {
     if (this.disposed) return;
     this.frame = frame;
     this.rebuildGhosts();
-    if (frame) {
-      const [fw, fh] = this.fittedSize;
-      const moved = (a: number, b: number) => Math.abs(a - b) > 0.15 * b;
-      if (fw === 0 || moved(frame.outer.w, fw) || moved(frame.outer.h, fh)) this.fitView();
-    }
+    if (frame && needsRefit(this.fitted, frame.outer)) this.fitView();
     this.requestRender();
   }
 
@@ -241,7 +238,7 @@ export class CoverScene {
       const { outer, frontZ } = this.frame;
       box.expandByPoint(new THREE.Vector3(outer.cx - outer.w / 2, outer.cy - outer.h / 2, 0));
       box.expandByPoint(new THREE.Vector3(outer.cx + outer.w / 2, outer.cy + outer.h / 2, frontZ));
-      this.fittedSize = [outer.w, outer.h];
+      this.fitted = [outer.w, outer.h, outer.cx, outer.cy];
     }
     if (box.isEmpty()) return;
     const sphere = box.getBoundingSphere(new THREE.Sphere());

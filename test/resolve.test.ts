@@ -19,6 +19,13 @@ type Pocket = Extract<ResolvedFeature, { kind: 'pocket' }>;
 type Opening = Extract<ResolvedFeature, { kind: 'opening' }>;
 
 const pockets = (f: CoverFrame) => f.features.filter((x): x is Pocket => x.kind === 'pocket');
+/** The outer outline's sides (world mm). */
+const sides = (f: CoverFrame) => ({
+  left: f.outer.cx - f.outer.w / 2,
+  right: f.outer.cx + f.outer.w / 2,
+  bottom: f.outer.cy - f.outer.h / 2,
+  top: f.outer.cy + f.outer.h / 2,
+});
 const openings = (f: CoverFrame) => f.features.filter((x): x is Opening => x.kind === 'opening');
 const codes = (f: CoverFrame) => f.warnings.map((w) => w.code);
 const bilresa = (col: number, row: number, extra: Partial<ModuleConfig> = {}): ModuleConfig => ({
@@ -185,7 +192,7 @@ describe('height chain', () => {
 });
 
 describe('outer size', () => {
-  it('auto size wraps the plate (+clearance +skirt), symmetric about the plate centre', () => {
+  it('auto size wraps the plate (+clearance +skirt); symmetric content stays centred on the plate', () => {
     const f = resolveLayout(presetConfig('ch-sd-1x1'));
     // 90 + 2·(1 + 2.4) both ways: the plate sets the size. The pocket (35.3 + minWall 2 + margin 4)
     // and the finger notch (end at 35.3 + 7, + minWall 2) fit inside; the notch backing ending
@@ -193,19 +200,36 @@ describe('outer size', () => {
     expect(f.outer).toMatchObject({ w: 96.8, h: 96.8, cx: 0, cy: 0, cornerR: 6.4, autoW: 96.8, autoH: 96.8 });
   });
 
-  it('grows symmetrically to keep minWall + margin around shifted pockets', () => {
+  it('grows only on the side a shifted pocket needs (the outline is the union of the requirement boxes)', () => {
     const c = presetConfig('ch-sd-1x1');
     c.modules[0].dx = 20;
     // pocket half width 20.3 + 20 shift + minWall 2 + margin 4 = 46.3 < 48.4 (plate wins)
-    expect(resolveLayout(c).outer.w).toBe(96.8);
+    expect(resolveLayout(c).outer).toMatchObject({ w: 96.8, cx: 0 });
     c.modules[0].dx = 30;
     const g = resolveLayout(c);
-    expect(g.outer.w).toBeCloseTo(2 * (30 + 20.3 + 6), 2);
-    expect(g.outer.h).toBe(96.8);
-    expect(g.outer.cx).toBe(0);
+    // right: 30 + 20.3 + 6 = 56.3 (the pocket), left: −48.4 (the plate + clearance + skirt)
+    expect(sides(g).right).toBeCloseTo(56.3, 6);
+    expect(sides(g).left).toBeCloseTo(-48.4, 6);
+    expect(g.outer.w).toBeCloseTo(104.7, 6);
+    expect(g.outer.cx).toBeCloseTo((56.3 - 48.4) / 2, 6);
+    expect(g.outer).toMatchObject({ h: 96.8, cy: 0 });
     const b = placedBounds(offsetPlaced(pockets(g)[0].placed, 6));
-    expect(b.maxX).toBeLessThanOrEqual(g.outer.w / 2 + 1e-6);
-    expect(-b.minX).toBeLessThan(g.outer.w / 2); // symmetric: the far side has slack
+    expect(b.maxX).toBeLessThanOrEqual(sides(g).right + 1e-6);
+    // mirrored: the left side grows instead, by the same amount
+    c.modules[0].dx = -30;
+    const m = resolveLayout(c);
+    expect(m.outer.w).toBe(g.outer.w);
+    expect(m.outer.cx).toBeCloseTo(-g.outer.cx, 9);
+  });
+
+  it('a manual size ≥ auto is centred on the automatic outline', () => {
+    const c = presetConfig('ch-sd-1x1');
+    c.modules[0].dx = 30;
+    const auto = resolveLayout(c).outer;
+    c.cover.size = { w: 130, h: 100 };
+    const f = resolveLayout(c);
+    expect(f.outer).toMatchObject({ w: 130, h: 100, cx: auto.cx, cy: auto.cy, autoW: auto.autoW, autoH: auto.autoH });
+    expect(sides(f).right - sides(resolveLayout({ ...c, cover: { ...c.cover, size: 'auto' } })).right).toBeCloseTo((130 - auto.w) / 2, 9);
   });
 
   it('grows past the rounded outer corner when a sharp opening sits in it', () => {
@@ -245,16 +269,22 @@ describe('outer size', () => {
   it('style minFrame keeps features and finger notches (not the plate) away from the edge', () => {
     const lim = (minFrame: number): StyleLimits => ({ minFrame, minFrontZ: 0, maxEdgeR: 5 });
     // 5 mm: pocket (35.3 + 6) and notch (42.3 + 5) fit inside the plate-driven 48.4
-    expect(resolveLayout(presetConfig('ch-sd-1x1'), { limits: lim(5) }).outer).toMatchObject({ w: 96.8, h: 96.8 });
-    // 10 mm: the pocket still fits (35.3 + 10), the notch (end 42.3) needs 52.3
-    expect(resolveLayout(presetConfig('ch-sd-1x1'), { limits: lim(10) }).outer).toMatchObject({ w: 96.8, h: 104.6 });
+    expect(resolveLayout(presetConfig('ch-sd-1x1'), { limits: lim(5) }).outer).toMatchObject({ w: 96.8, h: 96.8, cy: 0 });
+    // 10 mm: the pocket still fits (35.3 + 10), the notch (bottom end 42.3) needs 52.3 below the
+    // centre; only the bottom grows, the top stays plate-driven
+    const ten = resolveLayout(presetConfig('ch-sd-1x1'), { limits: lim(10) });
+    expect(ten.outer).toMatchObject({ w: 96.8, h: 100.7 });
+    expect(sides(ten).top).toBeCloseTo(48.4, 6);
+    expect(sides(ten).bottom).toBeCloseTo(-52.3, 6);
     const f = resolveLayout(presetConfig('ch-sd-1x1'), { limits: lim(20) });
     expect(f.outer.w).toBe(96.8);
-    expect(f.outer.h).toBeCloseTo(2 * (35.3 + 7 + 20), 2);
-    // without a notch the pocket alone sets it
+    expect(sides(f).bottom).toBeCloseTo(-(35.3 + 7 + 20), 6); // the notch
+    expect(sides(f).top).toBeCloseTo(35.3 + 20, 6); // the pocket
+    // without a notch the pocket alone sets it, symmetrically
     const c = presetConfig('ch-sd-1x1');
     c.bilresa.notch.enabled = false;
     expect(resolveLayout(c, { limits: lim(20) }).outer.h).toBeCloseTo(2 * (35.3 + 20), 2);
+    expect(resolveLayout(c, { limits: lim(20) }).outer.cy).toBe(0);
   });
 });
 
@@ -404,9 +434,11 @@ describe('finger notch in the edge zone (CoverStyle.allowsNotchInEdge)', () => {
     return resolveLayout(c, { limits: style.limits(params, plateOf(c)), allowsNotchInEdge });
   };
 
-  it('1×1 faceted: 96.8 × 108.6 with the notch off the bevel, the plate-driven 96.8 × 96.8 when the notch may enter it', () => {
-    // minFrame 11 (bevel 7 + groove 1 + 3) + chamfer 1: the notch end at 42.3 needs 54.3
-    expect(styled('faceted', false).outer).toMatchObject({ w: 96.8, h: 108.6 });
+  it('1×1 faceted: 96.8 × 102.7 with the notch off the bevel, the plate-driven 96.8 × 96.8 when the notch may enter it', () => {
+    // minFrame 11 (bevel 7 + groove 1 + 3) + chamfer 1: the notch end at −42.3 needs −54.3 (only
+    // the bottom grows; the top stays at the plate-driven 48.4)
+    expect(styled('faceted', false).outer).toMatchObject({ w: 96.8, h: 102.7 });
+    expect(sides(styled('faceted', false)).bottom).toBeCloseTo(-54.3, 6);
     const f = styled('faceted', true);
     expect(f.outer).toMatchObject({ w: 96.8, h: 96.8, autoW: 96.8, autoH: 96.8 });
     expect(getStyle('faceted')!.allowsNotchInEdge).toBe(true);
@@ -420,15 +452,18 @@ describe('finger notch in the edge zone (CoverStyle.allowsNotchInEdge)', () => {
     expect(g).toBeLessThan(f.minWall);
   });
 
-  it('1×1 stepped: 96.8 × 99.8 with the notch on the top tier, 96.8 × 96.8 when it may enter the step', () => {
-    // minFrame 7 (step 5 + 2) + chamfer 0.6: the notch end at 42.3 needs 49.9
-    expect(styled('stepped', false).outer).toMatchObject({ w: 96.8, h: 99.8 });
+  it('1×1 stepped: 96.8 × 98.3 with the notch on the top tier, 96.8 × 96.8 when it may enter the step', () => {
+    // minFrame 7 (step 5 + 2) + chamfer 0.6: the notch end at −42.3 needs −49.9 (bottom only)
+    expect(styled('stepped', false).outer).toMatchObject({ w: 96.8, h: 98.3 });
+    expect(sides(styled('stepped', false)).bottom).toBeCloseTo(-49.9, 6);
     expect(styled('stepped', true).outer).toMatchObject({ w: 96.8, h: 96.8 });
     expect(getStyle('stepped')!.allowsNotchInEdge).toBe(true);
   });
 
-  it('1×1 organic: the notch no longer adds 4.3 mm; the rounded corner still sets the width', () => {
-    expect(styled('organic', false).outer).toMatchObject({ w: 101.33, h: 105.6 });
+  it('1×1 organic: the notch no longer adds 2.1 mm at the bottom; the rounded corner still sets the width', () => {
+    // minFrame 9 (fillet 8 + 1) + fillet 1.5: the notch end at −42.3 needs −52.8; top 101.33 / 2
+    expect(styled('organic', false).outer).toMatchObject({ w: 101.33, h: 103.47 });
+    expect(sides(styled('organic', false)).bottom).toBeCloseTo(-52.8, 2); // (+ half the 0.01 rounding)
     expect(styled('organic', true).outer).toMatchObject({ w: 101.33, h: 101.33 });
     expect(getStyle('organic')!.allowsNotchInEdge).toBe(true);
   });

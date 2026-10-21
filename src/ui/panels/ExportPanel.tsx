@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { CoverConfig } from '../../config/schema';
 import type { BuildStats, CoverFrame, Warning } from '../../geometry/contract';
 import type { AnyCoverStyle } from '../../styles';
-import { effectiveOrientation, fmt, heightSummary, parseFeatureId, stlFilename } from '../derive';
+import { effectiveOrientation, fmt, heightSummary, outlineOffsetText, parseFeatureId, stlFilename } from '../derive';
 import { useToast } from '../components/Toasts';
 import type { Cell } from './LayoutSvg';
 
@@ -90,6 +90,7 @@ export function ExportPanel({
         <dt>Cover</dt>
         <dd>
           {fmt(frame.outer.w)} × {fmt(frame.outer.h)} mm, face at {fmt(frame.frontZ)} mm
+          {outlineOffsetText(frame.outer) && <span className="muted"> ({outlineOffsetText(frame.outer)})</span>}
         </dd>
         <dt>Total height</dt>
         <dd>

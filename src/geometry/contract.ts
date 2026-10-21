@@ -60,6 +60,13 @@
  *    a notch and the outer outline instead of max(minWall, minFrame) + allowance.
  *  - `CoverStyle.printOrientation` may be a function of the params (organic: face up once the
  *    face is domed); `stylePrintOrientation` (src/styles) resolves either form.
+ *
+ * Combo plate (Swiss switch + socket on one plate):
+ *  - SEMANTIC CHANGE: `CoverFrame.outer.cx` / `cy` are no longer always 0. The automatic outline is
+ *    the union of the requirement boxes (plate + clearance + skirt, features, notches), so content
+ *    that needs room on one side only moves the centre that way. Everything that builds or draws
+ *    the outline uses (cx, cy); the plate (`CoverFrame.plate`, its ghost and collision box) stays
+ *    at the origin.
  */
 import type { z } from 'zod';
 import type { CrossSection, Manifold, ManifoldToplevel } from 'manifold-3d';
@@ -180,7 +187,10 @@ export type ResolvedFeature =
     };
 
 export interface CoverFrame {
-  /** Cover outline: rounded rect of w × h centred on (cx, cy) with corner radius cornerR. */
+  /**
+   * Cover outline: rounded rect of w × h centred on (cx, cy) with corner radius cornerR. The centre
+   * is relative to the plate centre (origin) and is non-zero when the content is not symmetric.
+   */
   outer: {
     w: number;
     h: number;

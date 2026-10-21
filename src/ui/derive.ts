@@ -71,6 +71,18 @@ export function stlFilename(config: CoverConfig, kind: 'export' | 'testFit'): st
   return kind === 'testFit' ? `${base}-testfit.stl` : `${base}.stl`;
 }
 
+/**
+ * Where the cover's centre sits relative to the plate centre, in words ("" when centred): the
+ * automatic outline grows only where something needs room, so it can be off-centre.
+ */
+export function outlineOffsetText(outer: Pick<CoverFrame['outer'], 'cx' | 'cy'>): string {
+  const parts: string[] = [];
+  if (Math.abs(outer.cy) >= 0.05) parts.push(`${fmt(Math.abs(outer.cy))} mm ${outer.cy > 0 ? 'above' : 'below'}`);
+  if (Math.abs(outer.cx) >= 0.05) parts.push(`${fmt(Math.abs(outer.cx))} mm ${outer.cx > 0 ? 'right of' : 'left of'}`);
+  if (parts.length === 0) return '';
+  return `centred ${parts.join(' and ')} the plate centre`;
+}
+
 /** Outlet opening matching the plate system (DE presets get the Schuko size). */
 export function defaultOutlet(config: CoverConfig): OpeningSpec {
   return { ...(config.plate.preset.startsWith('de-') ? OUTLET_DE : OUTLET_CH) };

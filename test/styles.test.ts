@@ -403,11 +403,8 @@ describe('organic dome', () => {
       const body = style.outerBody(ctx);
       const plateau = offsetPlaced(bodyPlaced(frame, params.cornerR as number), -(params.edgeR as number) - 1);
       const pts = outlineWorld(offsetPlaced(plateau, -2), 0, 16).map(([x, y]) => [x, y] as [number, number]);
-      for (let i = 1; i < 8; i++)
-        for (let j = 1; j < 8; j++) {
-          const { w, h } = frame.outer;
-          pts.push([-w / 2 + (w * i) / 8, -h / 2 + (h * j) / 8]);
-        }
+      const { w, h, cx, cy } = frame.outer;
+      for (let i = 1; i < 8; i++) for (let j = 1; j < 8; j++) pts.push([cx - w / 2 + (w * i) / 8, cy - h / 2 + (h * j) / 8]);
       let worst = 0;
       for (const [x, y] of pts) {
         if (insideDistance(plateau, [x, y]) <= 0) continue;
@@ -417,8 +414,9 @@ describe('organic dome', () => {
         expect(top - s, `(${x.toFixed(1)}, ${y.toFixed(1)})`).toBeLessThanOrEqual(0.1); // never above surfaceZ
         expect(top - s, `(${x.toFixed(1)}, ${y.toFixed(1)})`).toBeGreaterThanOrEqual(-0.2);
       }
-      expect(style.surfaceZ(ctx, 0, 0)).toBeCloseTo(frame.frontZ + 3, 9);
-      expect(style.surfaceZ(ctx, frame.outer.w / 2 + 5, 0)).toBe(frame.frontZ);
+      // the apex sits on the cover's centre (which may be off the plate centre)
+      expect(style.surfaceZ(ctx, cx, cy)).toBeCloseTo(frame.frontZ + 3, 9);
+      expect(style.surfaceZ(ctx, cx + w / 2 + 5, cy)).toBe(frame.frontZ);
       expect(worst).toBeLessThan(0.2);
       return null;
     });
