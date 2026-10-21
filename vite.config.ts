@@ -7,7 +7,8 @@ export default defineConfig({
   base: '/switchcover/',
   plugins: [react()],
   worker: { format: 'es' },
-  build: { target: 'es2022' },
+  // three.js makes the main chunk ~970 kB; that is expected for a 3D app.
+  build: { target: 'es2022', chunkSizeWarningLimit: 1200 },
   // manifold-3d ships its own WASM loader; pre-bundling breaks its import.meta.url lookup.
   optimizeDeps: { exclude: ['manifold-3d'] },
   test: {

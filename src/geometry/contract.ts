@@ -3,7 +3,8 @@
  *
  * This file is the single source of truth for the data that flows between
  * config → layout (resolveLayout) → geometry (kit, features, styles) → worker → UI.
- * Phase 1 work packages code against these types; change them only with care.
+ * Everything (resolver, features, styles, worker, UI) codes against these types; change them
+ * only with care and record the change below.
  *
  * Conventions (identical everywhere, see README "Coordinate conventions"):
  *  - Units are millimetres, angles are degrees.
