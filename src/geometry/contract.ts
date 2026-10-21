@@ -22,9 +22,12 @@
  *  - `Warning` has an optional `featureId` so the UI can point at the offending module.
  *  - `Kit.ring` accepts an optional `segments` override so callers can force identical
  *    sample counts across rings (loft does this internally).
- *  - `StyleLimits` is a named type for the return value of `CoverStyle.limits`.
- *  - `CoverStyle`'s schema bound is `z.ZodObject<any>` exactly as sketched; zod's own
- *    generic parameters force the `any` (see comment at the declaration).
+ *  - Named helper types for things the sketch wrote inline: `StyleLimits` (return of
+ *    `CoverStyle.limits`), `LoftSlice`, `FeatureParts`, `Quality`, `BuildKind`, `Severity`,
+ *    `BilresaVariant`, and the protocol messages `BuildRequest` / `BuildResult` /
+ *    `BuildError` / `BuildResponse` (+ `isBuildError`).
+ *  - `CoverStyle`'s schema bound is `z.ZodObject` (zod 4's default generics, which accept
+ *    any concrete object schema incl. strict ones) instead of `z.ZodObject<any>`.
  */
 import type { z } from 'zod';
 import type { CrossSection, Manifold, ManifoldToplevel } from 'manifold-3d';
@@ -230,11 +233,9 @@ export interface StyleLimits {
 /**
  * A cover style plugin. Register it in src/styles/index.ts.
  *
- * `S` is bound by `z.ZodObject<any>`: zod 4's ZodObject generics (shape + config) do not
- * accept `unknown`-based bounds for concrete schemas, so `any` is required here.
+ * `S` is the zod schema of the style's params; `P` the parsed params type.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export interface CoverStyle<S extends z.ZodObject<any>, P = z.infer<S>> {
+export interface CoverStyle<S extends z.ZodObject, P = z.infer<S>> {
   id: string;
   version: number;
   label: string;

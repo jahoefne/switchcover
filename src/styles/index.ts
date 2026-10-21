@@ -10,9 +10,7 @@ import { boxStyle } from './box';
  * A registered style with its params erased to a plain record. (Methods are bivariant in
  * their parameters, so any concrete CoverStyle<S> is assignable.)
  */
-// The `any` mirrors CoverStyle's own zod bound (see contract.ts).
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AnyCoverStyle = CoverStyle<z.ZodObject<any>, Record<string, unknown>>;
+export type AnyCoverStyle = CoverStyle<z.ZodObject, Record<string, unknown>>;
 
 const STYLES: readonly AnyCoverStyle[] = [boxStyle];
 
