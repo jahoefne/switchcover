@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { presetConfig } from '../src/config/presets';
 import type { CoverConfig } from '../src/config/schema';
 import type { CoverStyle } from '../src/geometry/contract';
-import type { AnyCoverStyle } from '../src/styles';
+import { listStyles, type AnyCoverStyle } from '../src/styles';
 import { StylePanel } from '../src/ui/panels/StylePanel';
 import { describeStyleParams, humanize } from '../src/ui/styleParams';
 
@@ -116,7 +116,7 @@ describe('StylePanel', () => {
     config.cover.styleParams = { edgeR: 3 };
     const update = renderPanel(config);
     const select = screen.getByLabelText('Style') as HTMLSelectElement;
-    expect([...select.options].map((o) => o.value)).toEqual(['box', 'fake']);
+    expect([...select.options].map((o) => o.value)).toEqual([...listStyles().map((s) => s.id), 'fake']);
     fireEvent.change(select, { target: { value: 'box' } });
     const updater = (update.mock.calls.at(-1) as unknown as [(c: CoverConfig) => void])[0];
     const draft = structuredClone(config);
