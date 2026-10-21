@@ -5,7 +5,10 @@
 import type { z } from 'zod';
 import type { CoverStyle, Warning } from '../geometry/contract';
 import { boxStyle } from './box';
+import { facetedStyle } from './faceted';
 import { minimalStyle } from './minimal';
+import { organicStyle } from './organic';
+import { steppedStyle } from './stepped';
 
 /**
  * A registered style with its params erased to a plain record. (Methods are bivariant in
@@ -13,9 +16,15 @@ import { minimalStyle } from './minimal';
  */
 export type AnyCoverStyle = CoverStyle<z.ZodObject, Record<string, unknown>>;
 
-const STYLES: readonly AnyCoverStyle[] = [boxStyle, minimalStyle];
+const STYLES: readonly AnyCoverStyle[] = [
+  minimalStyle,
+  organicStyle,
+  facetedStyle,
+  steppedStyle,
+  boxStyle,
+];
 
-export const DEFAULT_STYLE_ID = 'box';
+export const DEFAULT_STYLE_ID = 'minimal';
 
 export function listStyles(): readonly AnyCoverStyle[] {
   return STYLES;

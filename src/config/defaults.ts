@@ -71,7 +71,7 @@ export const DEFAULT_BILRESA: BilresaSettings = {
 };
 
 export const DEFAULT_COVER: CoverSettings = {
-  style: 'box',
+  style: 'minimal',
   styleParams: {},
   /** Face thickness above the cavity. */
   skinT: 3,
