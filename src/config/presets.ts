@@ -6,6 +6,7 @@ import {
   CH_STANDARDDUE,
   DEFAULT_BILRESA,
   DEFAULT_COVER,
+  DEFAULT_PART,
   DEFAULT_PRINT,
   DE_FRAME,
   plateSpan,
@@ -19,6 +20,7 @@ import {
   type CoverConfig,
   type GridSettings,
   type ModuleConfig,
+  type PartSettings,
   type Rotation,
 } from './schema';
 
@@ -42,6 +44,8 @@ interface LayoutOptions {
   plateModules?: { cols: number; rows: number };
   /** Grid pitch and offset (default: the system pitch, no offset). */
   grid?: Partial<Pick<GridSettings, 'pitchX' | 'pitchY' | 'offsetX' | 'offsetY'>>;
+  /** Part kind and extension placement (default: a cap). */
+  part?: Partial<PartSettings>;
 }
 
 /** Build a full config for a plate system with `cells[row][col]` module specs. */
@@ -78,6 +82,7 @@ function makeConfig(id: string, system: PlateSystem, cells: ModuleSpec[][], opts
     cover: DEFAULT_COVER,
     bilresa: DEFAULT_BILRESA,
     print: DEFAULT_PRINT,
+    part: { ...DEFAULT_PART, ...opts.part },
   } satisfies CoverConfig);
 }
 
@@ -121,6 +126,15 @@ function preset(
 ): Preset {
   return { id, label, description, system: system.id, config: makeConfig(id, system, cells, opts) };
 }
+
+/**
+ * Extensions: the existing 90 × 90 plate stays in use (its switch cannot be replaced); a flat slab
+ * glued to the wall right above it, flush with its face, holds the Bilresa. The slab covers one
+ * module cell (90 wide like the plate, 60 tall like the module pitch, so plate + extension look like
+ * a 1 × 2 plate) and grows beyond it only where the pocket needs more: a lying Bilresa fits the
+ * cell (rim + 6 mm cove: 86.6 × 56.6), an upright one makes it 86.6 mm tall.
+ */
+const EXTENSION_TOP: Partial<PartSettings> = { kind: 'extension', side: 'top' };
 
 function customPreset(): Preset {
   const config = makeConfig('custom', CH_STANDARDDUE, [[B]]);
@@ -187,6 +201,22 @@ export const PRESETS: readonly Preset[] = deepFreeze([
       [B, B],
       [O, O],
     ],
+  ),
+  preset(
+    'ch-sd-ext-top-h',
+    'CH extension — lying Bilresa above the plate',
+    'The 90×90 STANDARDdue plate stays in use; a flat 90×60 slab glued above it, flush with its face, holds a lying Bilresa in a raised pocket.',
+    CH_STANDARDDUE,
+    [[B90]],
+    { part: EXTENSION_TOP },
+  ),
+  preset(
+    'ch-sd-ext-top-v',
+    'CH extension — upright Bilresa above the plate',
+    'The 90×90 STANDARDdue plate stays in use; a flat slab glued above it, flush with its face, holds an upright Bilresa in a raised pocket.',
+    CH_STANDARDDUE,
+    [[B]],
+    { part: EXTENSION_TOP },
   ),
   preset('de-1x1', 'DE 1×1 — switch', '81×81 frame, one Bilresa (approximate data).', DE_FRAME, [[B]]),
   preset(

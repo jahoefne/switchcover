@@ -1,9 +1,68 @@
 import { useEffect, useState } from 'react';
 import { getPreset } from '../../config/presets';
-import type { CoverConfig } from '../../config/schema';
+import type { CoverConfig, ExtensionSide, PartKind } from '../../config/schema';
 import type { ConfigUpdater } from '../hooks/useConfig';
 import { Group } from '../components/Section';
-import { NumberField } from '../components/fields';
+import { NumberField, Segmented, SelectField } from '../components/fields';
+
+const SIDE_OPTIONS: { value: ExtensionSide; label: string }[] = [
+  { value: 'top', label: 'Above the plate' },
+  { value: 'bottom', label: 'Below the plate' },
+  { value: 'left', label: 'Left of the plate' },
+  { value: 'right', label: 'Right of the plate' },
+];
+
+/**
+ * What the printed part is: a cap over the plate, or an extension beside it (the plate stays in
+ * use; the slab is flush with its face and holds the Bilresa in a raised pocket).
+ */
+export function PartFields({ config, update }: PlatePanelProps) {
+  const { part } = config;
+  const extension = part.kind === 'extension';
+  return (
+    <Group title="Part">
+      <Segmented<PartKind>
+        label="Kind"
+        value={part.kind}
+        options={[
+          { value: 'cap', label: 'Cap over the plate' },
+          { value: 'extension', label: 'Extension beside it' },
+        ]}
+        onChange={(kind) => update((c) => void (c.part.kind = kind))}
+      />
+      <p className="muted small">
+        {extension
+          ? 'The plate stays in use. A solid slab glued to the wall beside it, flush with its face, holds the Bilresa; where the pocket is deeper than the slab its rim rises from the face through a curved cove. Printed face up.'
+          : 'A hollow cover glued over the plate; the Bilresa sits in a pocket of its face, the old switch stays reachable through an access hole.'}
+      </p>
+      {extension && (
+        <>
+          <SelectField label="Side" value={part.side} options={SIDE_OPTIONS} onChange={(side) => update((c) => void (c.part.side = side))} />
+          <NumberField
+            label="Gap to the plate"
+            unit="mm"
+            value={part.gap}
+            min={0}
+            max={50}
+            step={0.5}
+            hint="Between the plate's edge and the extension (0 = touching)."
+            onChange={(v) => update((c) => void (c.part.gap = v))}
+          />
+          <NumberField
+            label="Rim cove"
+            unit="mm"
+            value={part.flare}
+            min={0}
+            max={30}
+            step={0.5}
+            hint="Width of the curved rise from the face up to the pocket rim (0 = a straight step)."
+            onChange={(v) => update((c) => void (c.part.flare = v))}
+          />
+        </>
+      )}
+    </Group>
+  );
+}
 
 interface PlatePanelProps {
   config: CoverConfig;
@@ -60,6 +119,7 @@ function pruneModules(c: CoverConfig): void {
 export function PlatePanel({ config, update }: PlatePanelProps) {
   const { plate, grid } = config;
   const preset = getPreset(plate.preset);
+  const extension = config.part.kind === 'extension';
   const setSize = (key: 'w' | 'h', v: number) =>
     update((c) => {
       c.plate[key] = v;
@@ -69,8 +129,10 @@ export function PlatePanel({ config, update }: PlatePanelProps) {
 
   return (
     <>
+      <PartFields config={config} update={update} />
       <p className="panel-note">
         Measure the existing plate (frame) on the wall. Source: <strong>{preset && preset.id !== 'custom' ? preset.label : 'custom size'}</strong>.
+        {extension && ' The extension takes its face height, width and corner radius from it.'}
       </p>
       <Group title="Plate">
         <NumberField label="Width" unit="mm" value={plate.w} min={20} max={500} step={1} onChange={(v) => setSize('w', v)} />
@@ -82,7 +144,7 @@ export function PlatePanel({ config, update }: PlatePanelProps) {
           min={0}
           max={50}
           step={0.5}
-          hint="How far frame + rocker stand off the wall."
+          hint={extension ? "How far the plate stands off the wall: the extension's face sits at the same height." : 'How far frame + rocker stand off the wall.'}
           onChange={(v) => update((c) => void (c.plate.depth = v))}
         />
         <NumberField
@@ -95,7 +157,7 @@ export function PlatePanel({ config, update }: PlatePanelProps) {
           onChange={(v) => update((c) => void (c.plate.cornerR = v))}
         />
       </Group>
-      <Group title="Module grid">
+      <Group title="Module grid" note={extension ? "The extension's own grid, laid out beside the plate: one cell per Bilresa, the slab covers all cells." : undefined}>
         <NumberField
           label="Columns"
           value={grid.cols}

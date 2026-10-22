@@ -5,7 +5,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import type { CoverFrame } from '../../geometry/contract';
-import { fmt } from '../derive';
+import { fmt, topZ } from '../derive';
 import { CoverScene, type SceneOptions, type ViewerMesh } from './scene';
 
 export type { ViewerMesh } from './scene';
@@ -101,7 +101,7 @@ export function Viewer({ mesh, frame, busy = false, error = null }: ViewerProps)
       )}
       {frame && (
         <div className="viewer-dims" aria-hidden="true">
-          {fmt(frame.outer.w)} × {fmt(frame.outer.h)} × {fmt(frame.frontZ)} mm
+          {fmt(frame.outer.w)} × {fmt(frame.outer.h)} × {fmt(topZ(frame))} mm
         </div>
       )}
       {(banner || ghostError) && (

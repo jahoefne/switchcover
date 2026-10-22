@@ -16,12 +16,15 @@
  * Additive within v2 (no version bump; every older v2 link still parses):
  *  - grid.offsetX / grid.offsetY (mm, default 0): shift every module anchor, for plates whose
  *    devices do not sit on a grid centred on the plate (e.g. the Swiss switch + socket combo).
+ *  - part (default: a cap): the part kind. 'extension' is a flat slab beside the existing plate
+ *    (which stays in use) that holds the Bilresa in a raised pocket; see PartSchema.
  */
 import { z } from 'zod';
 import {
   CH_STANDARDDUE,
   DEFAULT_BILRESA,
   DEFAULT_COVER,
+  DEFAULT_PART,
   DEFAULT_PRINT,
   MIN_POCKET_DEPTH,
   plateSpan,
@@ -134,6 +137,28 @@ export const PrintSettingsSchema = z.object({
   orientation: z.enum(['style', 'faceDown', 'faceUp']),
 });
 
+export const PartKindSchema = z.enum(['cap', 'extension']);
+export const ExtensionSideSchema = z.enum(['top', 'bottom', 'left', 'right']);
+
+/**
+ * What the printed part is:
+ *  - 'cap' (default): the hollow cover over the existing plate (everything else in this file).
+ *  - 'extension': a flat slab glued to the wall beside the plate, on `side` of it and `gap` mm
+ *    from its edge, with its face flush with the plate's (plate.depth). The plate stays in use
+ *    (its switch cannot be replaced), the Bilresa sits in a pocket of the slab whose rim rises
+ *    above the face where the pocket is deeper than the slab, through a concave cove `flare` mm
+ *    wide. Modules sit on the grid centred on the slab; outlets / passthroughs are ignored there.
+ * The whole object is optional with defaults, so links written before it existed parse unchanged.
+ */
+export const PartSchema = z
+  .object({
+    kind: PartKindSchema.default(DEFAULT_PART.kind),
+    side: ExtensionSideSchema.default(DEFAULT_PART.side),
+    gap: mm(0, 50).default(DEFAULT_PART.gap),
+    flare: mm(0, 30).default(DEFAULT_PART.flare),
+  })
+  .default(DEFAULT_PART);
+
 export const CoverConfigSchema = z.object({
   v: z.literal(CONFIG_VERSION),
   plate: PlateSchema,
@@ -142,9 +167,13 @@ export const CoverConfigSchema = z.object({
   cover: CoverSettingsSchema,
   bilresa: BilresaSettingsSchema,
   print: PrintSettingsSchema,
+  part: PartSchema,
 });
 
 export type CoverConfig = z.infer<typeof CoverConfigSchema>;
+export type PartSettings = z.infer<typeof PartSchema>;
+export type PartKind = z.infer<typeof PartKindSchema>;
+export type ExtensionSide = z.infer<typeof ExtensionSideSchema>;
 export type PlateSettings = z.infer<typeof PlateSchema>;
 export type GridSettings = z.infer<typeof GridSchema>;
 export type ModuleConfig = z.infer<typeof ModuleSchema>;
@@ -182,6 +211,7 @@ export const DEFAULT_CONFIG: CoverConfig = deepFreeze(CoverConfigSchema.parse({
   cover: DEFAULT_COVER,
   bilresa: DEFAULT_BILRESA,
   print: DEFAULT_PRINT,
+  part: DEFAULT_PART,
 } satisfies CoverConfig));
 
 /** Deep copy (configs are plain JSON data). */

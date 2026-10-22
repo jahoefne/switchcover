@@ -18,7 +18,9 @@ import { listStyles } from '../src/styles';
 import { COVER_VOLUMES, type CoverVolumeKey } from './fixtures/coverVolumes';
 import { getKit } from './helpers/manifold';
 
-const PRESETS = listPresets().map((p) => p.id);
+const PRESETS = listPresets().filter((p) => p.config.part.kind === 'cap').map((p) => p.id);
+/** Extension plates ignore the style: one case each, keyed by their own fixed style. */
+const EXTENSIONS = listPresets().filter((p) => p.config.part.kind === 'extension').map((p) => p.id);
 const STYLES = listStyles().map((s) => s.id);
 const EXPORT_PRESETS = ['ch-sd-1x1'];
 
@@ -27,14 +29,18 @@ const key = (styleId: string, presetId: string, quality: Quality) => `${styleId}
 const cases: Array<[string, string, Quality]> = [
   ...STYLES.flatMap((s) => PRESETS.map((p) => [s, p, 'preview'] as [string, string, Quality])),
   ...STYLES.flatMap((s) => EXPORT_PRESETS.map((p) => [s, p, 'export'] as [string, string, Quality])),
+  ...EXTENSIONS.flatMap((p) => [['extension', p, 'preview'] as [string, string, Quality], ['extension', p, 'export'] as [string, string, Quality]]),
 ];
 
 function volumeOf(kit: Kit, styleId: string, presetId: string): number {
   return withScope(() => {
     const cfg = presetConfig(presetId);
-    cfg.cover.style = styleId;
-    cfg.cover.styleParams = {};
+    if (styleId !== 'extension') {
+      cfg.cover.style = styleId;
+      cfg.cover.styleParams = {};
+    }
     const b = buildCover(kit, cfg);
+    expect(b.style.id).toBe(styleId);
     expect(b.warnings.filter((w) => w.severity === 'error')).toEqual([]);
     return b.manifold.volume();
   });
@@ -51,8 +57,9 @@ if (process.env.UPDATE_COVER_VOLUMES) {
     const lines = cases.map(([s, p, q]) => `  '${key(s, p, q)}': ${volumeOf(kits[q]!, s, p)},`);
     const header = [
       '/**',
-      ' * Cover volumes (mm³) of every preset × style at preview quality, and the 1×1 at export quality,',
-      ' * as built by buildCover. Checked by test/volumes.test.ts; regenerate with',
+      ' * Cover volumes (mm³) of every cap preset × style at preview quality, the 1×1 at export quality and',
+      ' * the extension presets (own fixed style) at both, as built by buildCover. Checked by',
+      ' * test/volumes.test.ts; regenerate with',
       ' *   UPDATE_COVER_VOLUMES=1 npx vitest run test/volumes.test.ts',
       ' * only for an intentional geometry change (the diff then lists what changed).',
       ` * Generated on ${new Date().toISOString().slice(0, 10)}.`,

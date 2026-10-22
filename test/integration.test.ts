@@ -21,7 +21,8 @@ beforeAll(async () => {
   kit = await getKit('preview');
 });
 
-const PRESETS = listPresets().map((p) => p.id);
+// Caps only: an extension plate ignores the style (test/extension.test.ts builds it).
+const PRESETS = listPresets().filter((p) => p.config.part.kind === 'cap').map((p) => p.id);
 const STYLES = listStyles().map((s) => s.id);
 
 function configFor(presetId: string, styleId: string): CoverConfig {

@@ -1,6 +1,6 @@
 import LZString from 'lz-string';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_BILRESA } from '../src/config/defaults';
+import { DEFAULT_BILRESA, DEFAULT_PART } from '../src/config/defaults';
 import { getPreset, listPresets, presetConfig } from '../src/config/presets';
 import { CoverConfigSchema, DEFAULT_CONFIG, type CoverConfig, type ModuleConfig } from '../src/config/schema';
 import { HASH_PREFIX, decodeHash, encodeHash, roundDeep } from '../src/config/urlCodec';
@@ -57,9 +57,10 @@ function perturb(base: CoverConfig, rand: () => number): CoverConfig {
 
 /**
  * A fixture's decoded config as it parses today: links written before grid.offsetX / offsetY
- * existed get both offsets as 0 (zod default), everything else is unchanged.
+ * existed get both offsets as 0 (zod default) and links written before the part kind existed
+ * get the default part (a cap); everything else is unchanged.
  */
-const withGridOffsets = <T extends { grid: object }>(c: T) => ({ ...c, grid: { ...c.grid, offsetX: 0, offsetY: 0 } });
+const withGridOffsets = <T extends { grid: object }>(c: T) => ({ ...c, grid: { ...c.grid, offsetX: 0, offsetY: 0 }, part: { ...DEFAULT_PART } });
 
 /**
  * The layout part of a config: plate, grid and the modules (cell, role, rotation, offset, Bilresa

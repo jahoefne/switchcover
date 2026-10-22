@@ -11,8 +11,9 @@ export function cavityCeiling(frame: CoverFrame): number {
  * The hollow shell: outer outline inset by skirtT, z ∈ [−OVERSHOOT, frontZ − skinT]. It is
  * open at the wall side (the base stays flat at z = 0 and only the skirt touches the wall).
  * The plate (+ clearance) fits inside it; that is a collision check, not the cavity itself,
- * so auto-grown covers stay hollow.
+ * so auto-grown covers stay hollow. An extension plate is solid: no cavity at all.
  */
 export function cavity(kit: Kit, frame: CoverFrame): FeatureParts {
+  if (frame.part.kind === 'extension') return {};
   return { subtract: [kit.prism(outerPlaced(frame, frame.skirtT), -OVERSHOOT, cavityCeiling(frame))] };
 }

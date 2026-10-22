@@ -6,7 +6,9 @@
  *                                                           outlet sleeves
  *      shell   = body − hollow                              ≡ (body − cavity) + adds, clipped
  *                                                           to the body (wells can never poke
- *                                                           through a style's face or edges)
+ *                                                           through a style's face or edges).
+ *                                                           An extension plate has no cavity, so
+ *                                                           its solid body keeps the adds moot.
  *   3. shell  += style.decorate().add                       (only if the style decorates)
  *   4. cover   = shell − union(feature cuts + decorate().subtract)
  *
@@ -22,7 +24,7 @@
 import type { Manifold } from 'manifold-3d';
 import type { CoverConfig } from '../config/schema';
 import { WARNING_CODES, outerPlaced, resolveLayout } from '../layout/resolve';
-import { parseStyleParams, resolveStyle, type AnyCoverStyle } from '../styles';
+import { parseStyleParams, partStyle, type AnyCoverStyle } from '../styles';
 import type { CoverFrame, FeatureParts, Kit, StyleCtx, Warning } from './contract';
 import { cavity, featureParts } from './features';
 import { withScope } from './kit/scope';
@@ -91,12 +93,16 @@ export interface BuildOptions {
   style?: AnyCoverStyle;
 }
 
-/** Style lookup, params, style limits → resolveLayout, pocket placement. Pure TS (no WASM). */
+/**
+ * Style lookup (the part's style: registry style for a cap, the extension style for an extension
+ * plate), params, style limits → resolveLayout, pocket placement (caps only: an extension's
+ * pockets carry their own rim height). Pure TS (no WASM).
+ */
 export function prepareCover(kit: Kit, config: CoverConfig, options: BuildOptions = {}): PreparedCover {
-  const { style, warnings: styleWarnings } = options.style
-    ? { style: options.style, warnings: [] }
-    : resolveStyle(config.cover.style);
-  const { params, warnings: paramWarnings } = parseStyleParams(style, config.cover.styleParams);
+  const { style, rawParams, warnings: styleWarnings } = options.style
+    ? { style: options.style, rawParams: config.cover.styleParams, warnings: [] }
+    : partStyle(config);
+  const { params, warnings: paramWarnings } = parseStyleParams(style, rawParams);
   const plate = {
     w: config.plate.w,
     h: config.plate.h,
@@ -107,7 +113,7 @@ export function prepareCover(kit: Kit, config: CoverConfig, options: BuildOption
   const limits = style.limits(params, plate);
   const resolved = resolveLayout(config, { limits, allowsNotchInEdge: style.allowsNotchInEdge });
   const raw: CoverFrame = { ...resolved, warnings: [...styleWarnings, ...paramWarnings, ...resolved.warnings] };
-  const frame = placeFeaturesOnFace(raw, style, { frame: raw, params, kit });
+  const frame = raw.part.kind === 'extension' ? raw : placeFeaturesOnFace(raw, style, { frame: raw, params, kit });
   return { style, params, frame, ctx: { frame, params, kit } };
 }
 

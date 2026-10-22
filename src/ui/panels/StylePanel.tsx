@@ -19,6 +19,22 @@ export function StylePanel({ config, style, params, limits, update }: StylePanel
   const controls = describeStyleParams(style, params, limits);
   const known = styles.some((s) => s.id === config.cover.style);
 
+  if (config.part.kind === 'extension') {
+    const cap = styles.find((s) => s.id === config.cover.style);
+    return (
+      <>
+        <p className="panel-note">
+          An extension plate has one fixed look: a flat slab with the plate's corner radius and a 1 mm edge chamfer, flush
+          with the plate's face, with a raised, curved rim around each Bilresa pocket (set its width under "Plate"). Styles
+          apply to caps only{cap ? ` (this layout would use "${cap.label}" as a cap)` : ''}.
+        </p>
+        <p className="print-hint">
+          <strong>Print:</strong> face up by default. {style.printHint}
+        </p>
+      </>
+    );
+  }
+
   const setParam = (key: string, value: unknown) =>
     update((c) => {
       // Store only overrides (short links); fall back to the parsed params if the stored ones

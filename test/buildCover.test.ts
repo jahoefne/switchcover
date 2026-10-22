@@ -17,7 +17,8 @@ beforeAll(async () => {
 });
 
 describe('buildCover (staged: body − (cavity − wells) − cuts)', () => {
-  it.each(listPresets().map((p) => [p.id] as const))('%s: valid, single piece, genus = through-holes, bbox = frame', (id) => {
+  const caps = listPresets().filter((p) => p.config.part.kind === 'cap');
+  it.each(caps.map((p) => [p.id] as const))('%s: valid, single piece, genus = through-holes, bbox = frame', (id) => {
     const before = liveObjectCount();
     withScope(() => {
       const { manifold, frame, warnings, expectedGenus: genus } = buildCover(kit, presetConfig(id));

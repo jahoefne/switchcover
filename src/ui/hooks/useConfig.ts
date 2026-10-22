@@ -27,7 +27,7 @@ export interface ConfigApi {
   hashWarnings: Warning[];
   /** Patch the config immutably; returns false (and changes nothing) if the result is invalid. */
   update(fn: ConfigUpdater): boolean;
-  /** Load a preset: replaces plate, grid and modules; keeps style and advanced settings. */
+  /** Load a preset: replaces plate, grid, modules and the part kind; keeps style and advanced settings. */
   loadPreset(id: string): void;
   /** Everything back to the default configuration. */
   reset(): void;
@@ -76,7 +76,7 @@ export function useConfig(): ConfigApi {
   const loadPreset = useCallback(
     (id: string) => {
       const p = presetConfig(id);
-      update((c) => ({ ...c, plate: p.plate, grid: p.grid, modules: p.modules, cover: { ...c.cover, size: 'auto' } }));
+      update((c) => ({ ...c, plate: p.plate, grid: p.grid, modules: p.modules, part: p.part, cover: { ...c.cover, size: 'auto' } }));
       setHashWarnings([]);
     },
     [update],

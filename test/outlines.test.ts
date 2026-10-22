@@ -9,7 +9,8 @@ import { listStyles } from '../src/styles';
 import { deriveFrame } from '../src/ui/derive';
 import { COVER_OUTLINES } from './fixtures/coverOutlines';
 
-const PRESETS = listPresets().map((p) => p.id);
+// Caps only: an extension plate ignores the style (test/extension.test.ts covers its outline).
+const PRESETS = listPresets().filter((p) => p.config.part.kind === 'cap').map((p) => p.id);
 const STYLES = listStyles().map((s) => s.id);
 const cases = STYLES.flatMap((s) => PRESETS.map((p) => [s, p] as const));
 

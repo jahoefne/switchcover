@@ -18,6 +18,8 @@ interface AdvancedPanelProps {
 
 export function AdvancedPanel({ config, frame, style, params, update }: AdvancedPanelProps) {
   const { bilresa, cover, print } = config;
+  const extension = frame.part.kind === 'extension' ? frame.part : null;
+  const rim = extension ? fmt(frame.frontZ + extension.rise) : null;
   const set = (fn: (c: CoverConfig) => void) => update((c) => void fn(c));
   const autoW = Math.ceil(frame.outer.autoW);
   const autoH = Math.ceil(frame.outer.autoH);
@@ -34,7 +36,11 @@ export function AdvancedPanel({ config, frame, style, params, update }: Advanced
           min={MIN_POCKET_DEPTH}
           max={30}
           step={0.5}
-          hint={`The pocket follows the Bilresa's rounded back (8 mm), then runs straight. Deeper = Bilresa sits lower, cover gets taller. Face at ${fmt(frame.frontZ)} mm.`}
+          hint={
+            extension
+              ? `The pocket follows the Bilresa's rounded back (8 mm), then runs straight. Its floor sits as low as the floor thickness allows; what does not fit the ${fmt(frame.frontZ)} mm slab rises as a rim (now ${rim} mm, ${fmt(extension.rise)} mm above the face).`
+              : `The pocket follows the Bilresa's rounded back (8 mm), then runs straight. Deeper = Bilresa sits lower, cover gets taller. Face at ${fmt(frame.frontZ)} mm.`
+          }
           onChange={(v) => set((c) => (c.bilresa.pocketDepth = v))}
         />
         <NumberField
@@ -89,7 +95,12 @@ export function AdvancedPanel({ config, frame, style, params, update }: Advanced
           min={0}
           max={150}
           step={1}
-          hint="One hole under the strip, centred on the pocket; the gaps beside the strip let a tool reach the old switch. Clipped to stay under the Bilresa."
+          hint={
+            extension
+              ? 'Not used for an extension plate: nothing sits behind it, so the strip is glued onto a full floor.'
+              : 'One hole under the strip, centred on the pocket; the gaps beside the strip let a tool reach the old switch. Clipped to stay under the Bilresa.'
+          }
+          disabled={!!extension}
           onChange={(v) => set((c) => (c.bilresa.access.w = v))}
         />
       </Group>
@@ -167,7 +178,14 @@ export function AdvancedPanel({ config, frame, style, params, update }: Advanced
         />
       </Group>
 
-      <Group title="Cover shell">
+      <Group
+        title="Cover shell"
+        note={
+          extension
+            ? 'An extension plate is a solid slab: only the minimum wall (its rim width) and the margin apply; skin, side wall, plate clearance and rocker gap are for caps.'
+            : undefined
+        }
+      >
         <NumberField label="Face (skin)" unit="mm" value={cover.skinT} min={0.4} max={20} step={0.1} onChange={(v) => set((c) => (c.cover.skinT = v))} />
         <NumberField label="Side wall (skirt)" unit="mm" value={cover.skirtT} min={0.4} max={20} step={0.1} onChange={(v) => set((c) => (c.cover.skirtT = v))} />
         <NumberField label="Min. wall" unit="mm" value={cover.minWall} min={0.4} max={20} step={0.1} onChange={(v) => set((c) => (c.cover.minWall = v))} />
@@ -218,7 +236,8 @@ export function AdvancedPanel({ config, frame, style, params, update }: Advanced
         />
         {cover.size === 'auto' ? (
           <p className="muted small">
-            Automatic: {fmt(frame.outer.autoW)} × {fmt(frame.outer.autoH)} mm (fits plate and all features).
+            Automatic: {fmt(frame.outer.autoW)} × {fmt(frame.outer.autoH)} mm (
+            {extension ? "the grid cells, the plate's width and every pocket with its rim and cove" : 'fits plate and all features'}).
           </p>
         ) : (
           <PairField

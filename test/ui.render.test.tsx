@@ -100,6 +100,53 @@ describe('App', () => {
     expect(vy).toBeLessThanOrEqual(Number(outline.getAttribute('y')));
   });
 
+  it('the extension preset card draws the slab above the plate; loading it switches the part kind', async () => {
+    renderApp();
+    const card = screen.getByRole('button', { name: 'CH extension — lying Bilresa above the plate' });
+    const svg = card.querySelector('svg')!;
+    // the slab's outline (90 × 60) sits right above the plate (SVG y = −world y: top at −105, bottom at −45)
+    const outline = svg.querySelector('.cover-outline')!;
+    expect(Number(outline.getAttribute('y'))).toBeCloseTo(-105, 6);
+    expect(Number(outline.getAttribute('height'))).toBeCloseTo(60, 6);
+    expect(Number(outline.getAttribute('width'))).toBeCloseTo(90, 6);
+    const plate = svg.querySelector('.plate')!;
+    expect(Number(plate.getAttribute('y'))).toBeCloseTo(-45, 6);
+    // the one grid cell is centred on the slab, the lying pocket in it
+    const cell = svg.querySelector('.grid-cells rect')!;
+    expect(Number(cell.getAttribute('y')) + Number(cell.getAttribute('height')) / 2).toBeCloseTo(-75, 6);
+    expect(svg.querySelector('.f-pocket')!.getAttribute('transform')).toBe('translate(0 -75) rotate(-90)');
+    const [, vy] = svg.getAttribute('viewBox')!.split(' ').map(Number);
+    expect(vy).toBeLessThanOrEqual(-105);
+
+    fireEvent.click(card);
+    await waitFor(() => expect(decodeHash(window.location.hash).config.part.kind).toBe('extension'));
+    expect(decodeHash(window.location.hash).config.part).toEqual({ kind: 'extension', side: 'top', gap: 0, flare: 6 });
+    // the Plate panel shows the part switch with the extension fields, the Style panel only a note
+    const plateNum = within(document.getElementById('plate')!);
+    expect((plateNum.getByLabelText('Side') as HTMLSelectElement).value).toBe('top');
+    expect((plateNum.getByLabelText('Rim cove') as HTMLInputElement).value).toBe('6');
+    expect(screen.queryByLabelText('Style')).toBeNull();
+    expect(within(document.getElementById('style')!).getByText(/Styles apply to caps only/)).toBeTruthy();
+    // numbers from the main-thread resolver: 90 × 60, face at the plate's 12 mm, rim 4.4 mm above it, printed face up
+    const exportPanel = within(document.getElementById('export')!);
+    expect(exportPanel.getByText(/90 × 60 mm, face at 12 mm/)).toBeTruthy();
+    expect(exportPanel.getByText(/pocket rim 16\.4 mm, 4\.4 mm above the face/)).toBeTruthy();
+    expect(exportPanel.getByText('Face up')).toBeTruthy();
+    expect(exportPanel.getByText(/Bilresa 4\.5 mm proud of the rim/)).toBeTruthy();
+    // the modules panel offers pockets and blanks only; the interactive grid draws the rim's foot
+    const roles = [...(screen.getByLabelText('Role') as HTMLSelectElement).options].map((o) => o.value);
+    expect(roles).toEqual(['bilresa', 'blank']);
+    expect(document.querySelector('#modules .f-rim')).toBeTruthy();
+    expect(document.querySelector('#modules .f-hole')).toBeNull();
+
+    // back to a cap through the part switch: the style panel and the access hole return
+    fireEvent.click(plateNum.getByLabelText('Cap over the plate'));
+    await waitFor(() => expect(decodeHash(window.location.hash).config.part.kind).toBe('cap'));
+    expect(screen.getByLabelText('Style')).toBeTruthy();
+    expect(document.querySelector('#modules .f-hole')).toBeTruthy();
+    expect(plateNum.queryByLabelText('Side')).toBeNull();
+  });
+
   it('loads a preset from its card', async () => {
     renderApp();
     fireEvent.click(screen.getByRole('button', { name: 'CH 2×2 — two switches + two sockets' }));

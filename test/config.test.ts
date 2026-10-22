@@ -3,6 +3,7 @@ import {
   BILRESA_VARIANTS,
   DEFAULT_BILRESA,
   DEFAULT_COVER,
+  DEFAULT_PART,
   DEFAULT_PRINT,
   MAX_OPENING_TUNNEL,
   MIN_POCKET_DEPTH,
@@ -80,6 +81,8 @@ describe('presets', () => {
     ['ch-sd-1x3v-switch-two-sockets', 90, 210, 1, 3],
     ['ch-sd-3x1h-three-switches', 210, 90, 3, 1],
     ['ch-sd-2x2', 150, 150, 2, 2],
+    ['ch-sd-ext-top-h', 90, 90, 1, 1],
+    ['ch-sd-ext-top-v', 90, 90, 1, 1],
     ['de-1x1', 81, 81, 1, 1],
     ['de-1x2v', 81, 152, 1, 2],
     ['de-2x1h', 152, 81, 2, 1],
@@ -88,6 +91,15 @@ describe('presets', () => {
 
   it('lists Swiss presets first, then DE, then custom', () => {
     expect(listPresets().map((p) => p.id)).toEqual(expected.map((e) => e[0]));
+  });
+
+  it('every preset is a cap except the two extensions, which sit above the plate', () => {
+    for (const p of listPresets()) {
+      const extension = p.id.startsWith('ch-sd-ext-');
+      expect(p.config.part, p.id).toEqual({ ...DEFAULT_PART, kind: extension ? 'extension' : 'cap' });
+    }
+    expect(getPreset('ch-sd-ext-top-h')!.config.modules).toEqual([{ col: 0, row: 0, role: 'bilresa', rot: 90, dx: 0, dy: 0, bilresa: { variant: '2button' } }]);
+    expect(getPreset('ch-sd-ext-top-v')!.config.modules).toEqual([{ col: 0, row: 0, role: 'bilresa', rot: 0, dx: 0, dy: 0, bilresa: { variant: '2button' } }]);
   });
 
   it.each(expected)('%s has the right plate and grid and validates', (id, w, h, cols, rows) => {

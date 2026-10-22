@@ -73,6 +73,12 @@
  *    of minWall around the opening) that hangs from the face skin into the cavity, as deep as the
  *    deepest pocket (frontZ − pocket depth, lifted onto a domed face like the pocket floors).
  *    Passthroughs have none.
+ *
+ * Extension plate (additive):
+ *  - `CoverFrame.part` says what the part is: a cap (everything above) or an extension — a solid
+ *    slab beside the plate (`FramePart`), with no cavity, skin or skirt. Its pockets carry `rimZ`,
+ *    the top of the raised rim around the pocket (= the local face over it; frontZ is the slab's
+ *    face). The plate still sits at the origin; the outline (`outer`) lies beside it.
  */
 import type { z } from 'zod';
 import type { CrossSection, Manifold, ManifoldToplevel } from 'manifold-3d';
@@ -181,6 +187,11 @@ export type ResolvedFeature =
       holes: Placed[];
       /** Finger notch (circle) centred on the pocket's far end, floorZ + NOTCH_FLOOR_LIFT → face. */
       notch?: Placed;
+      /**
+       * Extension plates only: top of the raised rim around the pocket (floorZ + pocket depth, ≥
+       * frontZ), i.e. the local face the pocket is cut into. Undefined in caps (the face is frontZ).
+       */
+      rimZ?: number;
     }
   | {
       kind: 'opening';
@@ -197,10 +208,33 @@ export type ResolvedFeature =
       sleeveZ?: number;
     };
 
+/**
+ * What the resolved part is. A cap is the hollow cover over the plate. An extension is a solid
+ * slab on `side` of the plate, `gap` mm from its edge, with its face at frontZ (= the plate's
+ * depth, raised to a minimum): the module grid of the config is centred on `origin` (world mm),
+ * and every pocket's rim rises `rise` mm at most above the face, through a cove `flare` mm wide.
+ */
+export type FramePart =
+  | { kind: 'cap' }
+  | {
+      kind: 'extension';
+      side: 'top' | 'bottom' | 'left' | 'right';
+      gap: number;
+      /** World position of the module grid's origin (the grid is centred on it). */
+      origin: Vec2;
+      /** Width of the concave cove from the face up to each pocket's rim (mm). */
+      flare: number;
+      /** Highest rim above the face (mm; 0 when every pocket fits inside the slab). */
+      rise: number;
+    };
+
 export interface CoverFrame {
+  /** Cap or extension (see FramePart). */
+  part: FramePart;
   /**
    * Cover outline: rounded rect of w × h centred on (cx, cy) with corner radius cornerR. The centre
-   * is relative to the plate centre (origin) and is non-zero when the content is not symmetric.
+   * is relative to the plate centre (origin) and is non-zero when the content is not symmetric
+   * (an extension's outline lies entirely beside the plate).
    */
   outer: {
     w: number;

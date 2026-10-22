@@ -6,7 +6,7 @@ import { BILRESA_VARIANTS, OUTLET_CH, OUTLET_DE } from '../config/defaults';
 import type { CoverConfig, OpeningSpec } from '../config/schema';
 import type { CoverFrame, StyleLimits, Warning } from '../geometry/contract';
 import { resolveLayout } from '../layout/resolve';
-import { parseStyleParams, resolveStyle, stylePrintOrientation, type AnyCoverStyle } from '../styles';
+import { parseStyleParams, partStyle, stylePrintOrientation, type AnyCoverStyle } from '../styles';
 
 export interface Derived {
   style: AnyCoverStyle;
@@ -17,10 +17,10 @@ export interface Derived {
   frame: CoverFrame;
 }
 
-/** Same chain as the worker's buildCover: style → params → limits → resolveLayout. */
+/** Same chain as the worker's buildCover: the part's style → params → limits → resolveLayout. */
 export function deriveFrame(config: CoverConfig): Derived {
-  const { style, warnings: styleWarnings } = resolveStyle(config.cover.style);
-  const { params, warnings: paramWarnings } = parseStyleParams(style, config.cover.styleParams);
+  const { style, rawParams, warnings: styleWarnings } = partStyle(config);
+  const { params, warnings: paramWarnings } = parseStyleParams(style, rawParams);
   const plate: CoverFrame['plate'] = {
     w: config.plate.w,
     h: config.plate.h,
@@ -43,16 +43,24 @@ export interface HeightSummary {
   frontZ: number;
   /** Highest point incl. the Bilresa standing in its pocket. */
   total: number;
-  /** How far the Bilresa stands proud of the face (0 without pockets). */
+  /** How far the Bilresa stands proud of the face (an extension: of the pocket rim; 0 without pockets). */
   proud: number;
 }
 
+/** Highest point of the part itself: the face, or an extension's highest pocket rim. */
+export function topZ(frame: CoverFrame): number {
+  let z = frame.frontZ;
+  for (const f of frame.features) if (f.kind === 'pocket' && f.rimZ !== undefined) z = Math.max(z, f.rimZ);
+  return z;
+}
+
 export function heightSummary(frame: CoverFrame): HeightSummary {
-  let total = frame.frontZ;
+  const top = topZ(frame);
+  let total = top;
   for (const f of frame.features) {
     if (f.kind === 'pocket') total = Math.max(total, f.floorZ + BILRESA_VARIANTS[f.variant].depth);
   }
-  return { frontZ: frame.frontZ, total, proud: Math.max(0, total - frame.frontZ) };
+  return { frontZ: frame.frontZ, total, proud: Math.max(0, total - top) };
 }
 
 /** The orientation an export would use: config.print.orientation, 'style' → the style's default for `params`. */
@@ -67,8 +75,14 @@ const slug = (s: string) =>
     .replace(/^-+|-+$/g, '') || 'x';
 
 export function stlFilename(config: CoverConfig, kind: 'export' | 'testFit'): string {
-  const base = `switchcover-${slug(config.plate.preset)}-${slug(config.cover.style)}`;
+  const base = `switchcover-${slug(config.plate.preset)}-${slug(config.part.kind === 'extension' ? 'extension' : config.cover.style)}`;
   return kind === 'testFit' ? `${base}-testfit.stl` : `${base}.stl`;
+}
+
+/** An extension's placement in words, e.g. "above the plate, 2 mm gap". */
+export function extensionPlacementText(part: Extract<CoverFrame['part'], { kind: 'extension' }>): string {
+  const where = { top: 'above', bottom: 'below', left: 'left of', right: 'right of' }[part.side];
+  return part.gap > 0 ? `${where} the plate, ${fmt(part.gap)} mm gap` : `${where} the plate`;
 }
 
 /**

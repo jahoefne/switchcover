@@ -1,9 +1,10 @@
 /**
- * Cover volumes (mm³) of every preset × style at preview quality, and the 1×1 at export quality,
- * as built by buildCover. Checked by test/volumes.test.ts; regenerate with
+ * Cover volumes (mm³) of every cap preset × style at preview quality, the 1×1 at export quality and
+ * the extension presets (own fixed style) at both, as built by buildCover. Checked by
+ * test/volumes.test.ts; regenerate with
  *   UPDATE_COVER_VOLUMES=1 npx vitest run test/volumes.test.ts
  * only for an intentional geometry change (the diff then lists what changed).
- * Generated on 2026-10-21.
+ * Generated on 2026-10-22.
  */
 export const COVER_VOLUMES = {
   'minimal ch-sd-1x1 preview': 51823.33131463395,
@@ -71,6 +72,10 @@ export const COVER_VOLUMES = {
   'faceted ch-sd-1x1 export': 48013.87767921296,
   'stepped ch-sd-1x1 export': 51295.34185401054,
   'box ch-sd-1x1 export': 51365.01970841163,
+  'extension ch-sd-ext-top-h preview': 44516.495339058485,
+  'extension ch-sd-ext-top-h export': 44465.60242746126,
+  'extension ch-sd-ext-top-v preview': 76670.69533910061,
+  'extension ch-sd-ext-top-v export': 76619.80242747415,
 } as const;
 
 export type CoverVolumeKey = keyof typeof COVER_VOLUMES;

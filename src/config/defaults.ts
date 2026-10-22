@@ -125,6 +125,33 @@ export const DEFAULT_PRINT: PrintSettings = {
 };
 
 // ---------------------------------------------------------------------------
+// Part kind: a cap over the plate (the default) or a flat extension beside it
+// ---------------------------------------------------------------------------
+
+/**
+ * The default part is a cap. The extension fields are carried by every config (so the kind can be
+ * switched back and forth) and only matter for `kind: 'extension'`: a flat slab glued to the wall
+ * on one `side` of the existing plate (`gap` mm from its edge), its face flush with the plate's,
+ * holding the Bilresa in a pocket whose rim rises above the face through a concave cove `flare`
+ * mm wide (see src/layout/resolveExtension.ts and src/styles/extension).
+ */
+export interface PartDefaults {
+  kind: 'cap' | 'extension';
+  side: 'top' | 'bottom' | 'left' | 'right';
+  gap: number;
+  flare: number;
+}
+
+export const DEFAULT_PART: PartDefaults = { kind: 'cap', side: 'top', gap: 0, flare: 6 };
+
+/** 45° chamfer around the top edge of an extension slab (mm; it matches the plate's soft edge). */
+export const EXTENSION_EDGE_CHAMFER = 1;
+/** 45° chamfer of an extension pocket's rim edge (mm; the resolver leaves room for it). */
+export const EXTENSION_RIM_CHAMFER = 0.6;
+/** An extension slab is never thinner than this (mm), whatever the plate's depth says. */
+export const MIN_EXTENSION_FACE = 2;
+
+// ---------------------------------------------------------------------------
 // Openings
 // ---------------------------------------------------------------------------
 

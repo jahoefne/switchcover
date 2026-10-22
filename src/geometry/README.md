@@ -11,7 +11,8 @@ CoverConfig ──resolveLayout()──▶ CoverFrame ──buildCover(kit, conf
 ```
 
 `contract.ts` is the authority for every type crossing these boundaries. Coordinates: mm,
-X right, Y up the wall, Z out of the wall, origin = plate centre, cover in z ∈ [0, frontZ].
+X right, Y up the wall, Z out of the wall, origin = plate centre, cover in z ∈ [0, frontZ]
+(an extension plate's pocket rims reach `rimZ` above frontZ; `frame.part` tells the two apart).
 
 ## Bodies and tools
 
@@ -55,6 +56,12 @@ cover  = shell − union(cuts + style.decorate().subtract)
 
 - Adds (wells, sleeves) are carved out of the cavity instead of unioned onto the body, so they
   can never poke through a style's face or edge profile, whatever their top.
+- **Extension plates** (`frame.part.kind === 'extension'`): `cavity` returns nothing, so the
+  body stays solid and the adds are moot; the body (src/styles/extension) is the slab hull ∪ one
+  `kit.loft` per raised rim (foot 0.5 mm inside the slab, cove slices, rim top at `rimZ`), and
+  its `surfaceZ` returns the rim / cove height, so the pocket void, strip indent and notch are
+  cut by the same feature code as in a cap (there are no access holes and no openings).
+  `prepareCover` skips the dome lift for them (the rims are the local face).
 - Everything is placed relative to `style.surfaceZ` at the feature centre. `prepareCover`
   lifts each pocket's `floorZ` by `surfaceZ(centre) − frontZ` (never lowers it); the
   returned frame carries the lifted values, so the viewer's ghosts match the geometry.
@@ -91,7 +98,7 @@ Counting through-holes: the open-bottom shell is a cup (genus 0). Pockets, strip
 and notches are blind (floor below, wells / backing around), so they add nothing. Every
 opening (an outlet's sleeve is a tube open at its bottom) and every pocket's (single) bridge
 access hole that overlaps the cavity footprint joins the face side to the wall side and adds
-exactly one handle. The check is skipped
+exactly one handle. An extension plate has neither, so its genus is 0. The check is skipped
 when the resolver reports `feature-overlap` (merged cuts merge holes; already reported).
 
 ## Worker

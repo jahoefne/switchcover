@@ -31,7 +31,7 @@ export function PresetsPanel({ activeId, onLoad, onReset }: PresetsPanelProps) {
 
   return (
     <>
-      <p className="panel-note">Loading a preset replaces plate, grid and modules; style and advanced settings stay.</p>
+      <p className="panel-note">Loading a preset replaces plate, grid, modules and the part kind; style and advanced settings stay.</p>
       <div className="preset-grid">
         {listPresets().map((p) => (
           <button

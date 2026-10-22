@@ -3,8 +3,10 @@
  * CoverStyle, import it here and append it to STYLES (keep the default first).
  */
 import type { z } from 'zod';
+import type { CoverConfig } from '../config/schema';
 import type { CoverStyle, PrintOrientation, Warning } from '../geometry/contract';
 import { boxStyle } from './box';
+import { extensionStyle } from './extension';
 import { facetedStyle } from './faceted';
 import { minimalStyle } from './minimal';
 import { organicStyle } from './organic';
@@ -50,6 +52,17 @@ export function resolveStyle(id: string): { style: AnyCoverStyle; warnings: Warn
       },
     ],
   };
+}
+
+/**
+ * The style a config is built with, and the raw params to parse with it: the registry style
+ * (`cover.style`, with a fallback warning) for a cap, the internal extension style for an
+ * extension plate (`part.kind: 'extension'`; it has no params and ignores `cover.style`, which
+ * stays stored for when the part is switched back to a cap).
+ */
+export function partStyle(config: Pick<CoverConfig, 'part' | 'cover'>): { style: AnyCoverStyle; rawParams: unknown; warnings: Warning[] } {
+  if (config.part.kind === 'extension') return { style: extensionStyle as unknown as AnyCoverStyle, rawParams: {}, warnings: [] };
+  return { ...resolveStyle(config.cover.style), rawParams: config.cover.styleParams };
 }
 
 /**

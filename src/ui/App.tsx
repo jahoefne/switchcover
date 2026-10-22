@@ -6,7 +6,7 @@
 import { Component, useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { getPreset } from '../config/presets';
 import { featureId } from '../layout/resolve';
-import { deriveFrame, fmt, mergeWarnings } from './derive';
+import { deriveFrame, extensionPlacementText, fmt, mergeWarnings, topZ } from './derive';
 import { useConfig } from './hooks/useConfig';
 import { defaultClientFactory, useGeometry, type ClientFactory } from './hooks/useGeometry';
 import { Section } from './components/Section';
@@ -76,6 +76,7 @@ function Main({ createClient }: { createClient: ClientFactory }) {
 
   const pockets = frame.features.filter((f) => f.kind === 'pocket').length;
   const openings = frame.features.length - pockets;
+  const extension = frame.part.kind === 'extension' ? frame.part : null;
 
   return (
     <div className="app">
@@ -104,7 +105,11 @@ function Main({ createClient }: { createClient: ClientFactory }) {
           <Section id="presets" title="Presets" summary={getPreset(config.plate.preset)?.label ?? 'Custom'} defaultOpen>
             <PresetsPanel activeId={config.plate.preset} onLoad={onLoadPreset} onReset={reset} />
           </Section>
-          <Section id="plate" title="Plate" summary={`${fmt(config.plate.w)} × ${fmt(config.plate.h)} mm, ${config.grid.cols}×${config.grid.rows}`}>
+          <Section
+            id="plate"
+            title="Plate"
+            summary={`${fmt(config.plate.w)} × ${fmt(config.plate.h)} mm, ${config.grid.cols}×${config.grid.rows}${extension ? ` · extension ${extensionPlacementText(extension)}` : ''}`}
+          >
             <PlatePanel config={config} update={update} />
           </Section>
           <Section
@@ -116,13 +121,13 @@ function Main({ createClient }: { createClient: ClientFactory }) {
           >
             <ModulesPanel config={config} frame={frame} update={update} selected={selected} onSelect={setSelected} />
           </Section>
-          <Section id="style" title="Style" summary={style.label} defaultOpen>
+          <Section id="style" title="Style" summary={extension ? 'not used for an extension' : style.label} defaultOpen={!extension}>
             <StylePanel config={config} style={style} params={params} limits={limits} update={update} />
           </Section>
           <Section id="advanced" title="Bilresa & print" summary={`pocket ${fmt(config.bilresa.pocketDepth)} mm`}>
             <AdvancedPanel config={config} frame={frame} style={style} params={params} update={update} />
           </Section>
-          <Section id="export" title="Export" summary={`${fmt(frame.outer.w)} × ${fmt(frame.outer.h)} × ${fmt(frame.frontZ)} mm`} defaultOpen>
+          <Section id="export" title="Export" summary={`${fmt(frame.outer.w)} × ${fmt(frame.outer.h)} × ${fmt(topZ(frame))} mm`} defaultOpen>
             <ExportPanel
               config={config}
               frame={frame}

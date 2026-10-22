@@ -89,7 +89,8 @@ const SPECS: Spec[] = [
   },
 ];
 
-const PRESET_IDS = listPresets().map((p) => p.id);
+// Caps only: an extension plate has its own fixed style (test/extension.test.ts).
+const PRESET_IDS = listPresets().filter((p) => p.config.part.kind === 'cap').map((p) => p.id);
 const EXTREME_PRESETS = ['ch-sd-1x1', 'ch-sd-1x2v-switch-socket', 'ch-sd-2x2', 'de-2x1h'];
 
 let kit: Kit;

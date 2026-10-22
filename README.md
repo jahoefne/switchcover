@@ -6,18 +6,23 @@ switchcover is a fully client-side web app that generates printable `.stl` cover
 existing light-switch plates. A cover is a hollow cap glued to the wall over the old plate.
 Its face carries recessed pockets for IKEA **Bilresa** smart switches (seated back-first and
 held by IKEA's magnetic metal strip), walled cut-outs for power outlets sharing the plate, and a
-hidden access hole behind each Bilresa so the old switch stays reachable. Pick a preset (Swiss Feller
-STANDARDdue first, DE/EU frames as secondary data), choose a style, tweak parameters,
-preview in 3D, download the STL and share the configuration via the URL.
+hidden access hole behind each Bilresa so the old switch stays reachable. When the old switch
+has to stay in use, an **extension plate** holds the Bilresa beside it instead (see "Extension
+plates"). Pick a preset (Swiss Feller STANDARDdue first, DE/EU frames as secondary data), choose
+a style, tweak parameters, preview in 3D, download the STL and share the configuration via the
+URL.
 
 Live: <https://jahoefne.github.io/switchcover/>
 
 ## What works
 
 - **Presets** for Swiss Feller STANDARDdue plates (1×1, 1×1 switch + socket combo, 1×2 switch +
-  socket, 2×1, 1×2 two switches, 1×3 switch + two sockets, 3×1, 2×2), approximate DE/EU frames
-  and a free `custom` layout (see "Presets" below). Plate size, depth, corner radius and the
-  module grid (pitch, and under "Advanced" an offset of the whole grid) are editable.
+  socket, 2×1, 1×2 two switches, 1×3 switch + two sockets, 3×1, 2×2, two extension plates above
+  a 1×1), approximate DE/EU frames and a free `custom` layout (see "Presets" below). Plate size,
+  depth, corner radius and the module grid (pitch, and under "Advanced" an offset of the whole
+  grid) are editable.
+- **Two part kinds**: a cap over the plate (the default), or an extension plate beside it when
+  the old switch has to stay in use (see "Extension plates").
 - **Modules**: click a grid cell to make it a Bilresa pocket (two-button or scroll wheel,
   rotation, dx/dy, own pocket depth, finger notch on/off), a socket opening (round Ø50 by
   default, rounded rect or stadium, any size; see "Socket openings"), a passthrough or blank. Pockets that would collide are spread
@@ -50,6 +55,8 @@ Live: <https://jahoefne.github.io/switchcover/>
 | `ch-sd-1x3v-switch-two-sockets` | 90 × 210 | Bilresa, two sockets |
 | `ch-sd-3x1h-three-switches` | 210 × 90 | three Bilresa |
 | `ch-sd-2x2` | 150 × 150 | two Bilresa on top, two sockets below |
+| `ch-sd-ext-top-h` | 90 × 90 (stays in use) | extension plate 90 × 60 above it, lying Bilresa |
+| `ch-sd-ext-top-v` | 90 × 90 (stays in use) | extension plate 90 × 89.8 above it, upright Bilresa |
 | `de-1x1`, `de-1x2v`, `de-2x1h` | 81 × 81, 81 × 152, 152 × 81 | approximate DE/EU frames (71 mm pitch) |
 | `custom` | any | start from one Swiss module |
 
@@ -69,6 +76,40 @@ usual). The bridge access hole spans y 19 … 53, so the key centre lies on its 
 gap below the magnet strip (y 19 … 24.8) lies over the key's upper half: press the old rocker
 there with a thin tool. The other styles: organic 101.33 × 118.8, faceted 96.8 × 119.3, stepped
 96.8 × 112.3, box 96.8 × 110.7 mm.
+
+## Extension plates
+
+Not every switch can be replaced by a Bilresa (a dimmer, a switch that has to stay operable).
+Then the plate stays as it is and the Bilresa goes **beside** it: switch the part kind under
+"Plate" to *Extension beside it* (or load one of the `ch-sd-ext-*` presets). The extension is a
+solid, flat slab glued to the wall on one side of the plate (above by default; below, left or
+right of it; `gap` mm from its edge, 0 = touching), with its face flush with the plate's face
+(the plate's depth, 12 mm for STANDARDdue) and the plate's corner radius, so plate + extension
+look like one longer plate. There is no cavity (the slicer's infill keeps it light), no skin or
+skirt and no access hole: the magnet strip is glued onto a full floor.
+
+- **Size.** The slab covers its module grid (one cell per Bilresa: 90 × 60 for a Swiss module, so
+  a lying Bilresa above a 1×1 plate gives exactly a 1×2 look) and is as wide as the plate along
+  the shared edge. Each pocket needs its rim + `max(cove + 1 mm edge chamfer, margin)` + the rim
+  chamfer around it (9.6 mm by default); where that is more than the cell, the slab grows — an
+  upright Bilresa makes it 89.8 mm tall, two lying Bilresa above a 150 mm plate make it wider
+  than the plate (a note says so). A manual size ≥ the automatic one grows symmetrically along
+  the plate's edge and away from the plate on the other axis.
+- **Raised rim.** The pocket is the same nested pocket as in a cap (back fillet, strip indent,
+  optional finger notch at the end away from the plate), its floor as low as the floor thickness
+  allows (`floorZ = max(floorT, face − depth)`). With the default 14 mm pocket in a 12 mm slab
+  the rim therefore stands 4.4 mm above the face (rim at 16.4 mm): around the pocket the face
+  curves up through a concave cove (`Rim cove`, 6 mm wide by default; 0 gives a straight step)
+  to a rim `minWall` wide with the usual 0.6 mm chamfer. A pocket shallower than the slab is
+  simply sunk flush into it. The Bilresa stands 4.5 mm proud of the rim, as in a cap.
+- **Modules.** The grid is the extension's own, laid out beside the plate; its cells hold
+  Bilresa pockets (any rotation, dx/dy, variant, depth, notch) or blanks. Outlets and
+  passthroughs are ignored with a warning (nothing sits behind the slab). Pockets that would
+  collide spread apart freely (there is no access hole to keep them over a rocker).
+- **Styles do not apply**: the extension has one fixed look (flat slab, 1 mm top edge chamfer,
+  coved rims). It prints **face up** — the base lies flat on the bed, the nested pocket widens
+  upwards and the cove narrows upwards, so nothing needs support. The test-fit part works as
+  usual (one pocket with a 3 mm rim, no access hole).
 
 ## Styles and print orientation
 
@@ -115,11 +156,13 @@ Pushing to `main` runs `.github/workflows/deploy.yml`: tests, build, deploy to G
 ```
 src/config/    zod schema (CoverConfig v2), defaults (ONE place for measurements), presets,
                migrate (v1 → v2), URL codec (#v2.<lz-string>, reads #v1.)
-src/layout/    resolveLayout: config → CoverFrame (pure TS, no WASM)
+src/layout/    resolveLayout: config → CoverFrame (pure TS, no WASM): resolve.ts (caps),
+               resolveExtension.ts (extension plates), steps.ts (what they share)
 src/geometry/  contract.ts (all shared types), shape2d.ts, kit/ (manifold-3d helpers +
                memory scopes), features/ (pockets, openings, cavity), buildCover.ts,
                buildTestFit.ts, export/stl.ts; rules in src/geometry/README.md
-src/styles/    style registry + styles (minimal, organic, faceted, stepped, box; common/ helpers)
+src/styles/    style registry + styles (minimal, organic, faceted, stepped, box; common/ helpers);
+               extension/ (the fixed look of an extension plate, picked by partStyle)
 src/worker/    geometry worker + client (one build in flight, newest wins)
 src/ui/        React app + three.js viewer (viewer/ghost.ts: where the Bilresa ghost goes)
 test/          vitest suites; test/helpers/manifold.ts initialises WASM once per file
@@ -141,10 +184,14 @@ Identical in config, layout, geometry and viewer:
 - The cover outline is a rounded rect of `outer.w × outer.h` centred on `(outer.cx, outer.cy)`:
   the union of what the plate (+ clearance + skirt), every feature (+ margins) and every finger
   notch need, so its centre may leave the plate centre. The plate always stays at the origin.
+  An extension plate's outline lies entirely beside the plate (`frame.part` says which side and
+  where its module grid's origin is); its features are in the same world coordinates.
 - Height chain: `frontZ = plate.depth + rockerGap + floorT + pocketDepth`
   (≈ 12 + 2 + 2.4 + 14 = 30.4 mm), with `floorT ≥ strip.protrusion + print.tolerance + 1.2`.
   The Bilresa's back rests on the floor (`floorZ = frontZ − pocketDepth`), its front stands
-  18.5 − pocketDepth proud of the face (4.5 mm by default).
+  18.5 − pocketDepth proud of the face (4.5 mm by default). An extension plate: `frontZ =
+  plate.depth` (≥ 2), `floorZ = max(floorT, frontZ − pocketDepth)`, rim at `rimZ = floorZ +
+  pocketDepth` (16.4 mm by default, 4.4 mm above the face).
 - Face-down export is a **rotation** of 180° about Y, (x, y, z) → (−x, y, −z), then a
   translation to min z = 0 — never a mirror. Seen from above in the slicer the layout
   therefore looks mirrored; that is correct (the left switch is still on the left when the

@@ -229,15 +229,20 @@ export class CoverScene {
     this.requestRender();
   }
 
-  /** Frame the cover (or, before the first mesh, the resolved outline) from the front. */
+  /**
+   * Frame the cover (or, before the first mesh, the resolved outline) and the plate from the
+   * front (an extension plate lies beside the plate; a cap's outline contains it anyway).
+   */
   fitView(): void {
     if (this.disposed) return;
     const box = new THREE.Box3();
     if (this.hasMesh && this.cover.geometry.boundingBox) box.copy(this.cover.geometry.boundingBox);
     if (this.frame) {
-      const { outer, frontZ } = this.frame;
+      const { outer, frontZ, plate } = this.frame;
       box.expandByPoint(new THREE.Vector3(outer.cx - outer.w / 2, outer.cy - outer.h / 2, 0));
       box.expandByPoint(new THREE.Vector3(outer.cx + outer.w / 2, outer.cy + outer.h / 2, frontZ));
+      box.expandByPoint(new THREE.Vector3(-plate.w / 2, -plate.h / 2, 0));
+      box.expandByPoint(new THREE.Vector3(plate.w / 2, plate.h / 2, plate.protrusion));
       this.fitted = [outer.w, outer.h, outer.cx, outer.cy];
     }
     if (box.isEmpty()) return;

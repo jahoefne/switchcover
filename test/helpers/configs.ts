@@ -47,8 +47,8 @@ const EXTRA: Record<string, () => CoverConfig> = {
   'x-notch-combo': withNotch('ch-sd-1x1-combo'),
 };
 
-/** Ids of every test layout (presets first). */
-export const LAYOUT_IDS: readonly string[] = [...listPresets().map((p) => p.id), ...Object.keys(EXTRA)];
+/** Ids of every cap test layout (presets first; extension plates are covered by test/extension.test.ts). */
+export const LAYOUT_IDS: readonly string[] = [...listPresets().filter((p) => p.config.part.kind === 'cap').map((p) => p.id), ...Object.keys(EXTRA)];
 
 /** A fresh config for a preset or extra layout id, with the given style. */
 export function layoutConfig(id: string, style?: string): CoverConfig {

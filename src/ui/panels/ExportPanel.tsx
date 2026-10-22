@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { CoverConfig } from '../../config/schema';
 import type { BuildStats, CoverFrame, Warning } from '../../geometry/contract';
 import type { AnyCoverStyle } from '../../styles';
-import { effectiveOrientation, fmt, heightSummary, outlineOffsetText, parseFeatureId, stlFilename } from '../derive';
+import { effectiveOrientation, extensionPlacementText, fmt, heightSummary, outlineOffsetText, parseFeatureId, stlFilename } from '../derive';
 import { useToast } from '../components/Toasts';
 import type { Cell } from './LayoutSvg';
 
@@ -56,6 +56,7 @@ export function ExportPanel({
   const heights = heightSummary(frame);
   const orientation = effectiveOrientation(config, style, params);
   const hasPocket = frame.features.some((f) => f.kind === 'pocket');
+  const extension = frame.part.kind === 'extension' ? frame.part : null;
   const errors = warnings.filter((w) => w.severity === 'error').length;
 
   const run = async (kind: 'export' | 'testFit') => {
@@ -87,14 +88,22 @@ export function ExportPanel({
   return (
     <>
       <dl className="stats">
-        <dt>Cover</dt>
+        <dt>{extension ? 'Extension' : 'Cover'}</dt>
         <dd>
           {fmt(frame.outer.w)} × {fmt(frame.outer.h)} mm, face at {fmt(frame.frontZ)} mm
-          {outlineOffsetText(frame.outer) && <span className="muted"> ({outlineOffsetText(frame.outer)})</span>}
+          {extension ? (
+            <span className="muted">
+              {' '}
+              ({extensionPlacementText(extension)}
+              {extension.rise > 0.005 && hasPocket ? `; pocket rim ${fmt(frame.frontZ + extension.rise)} mm, ${fmt(extension.rise)} mm above the face` : ''})
+            </span>
+          ) : (
+            outlineOffsetText(frame.outer) && <span className="muted"> ({outlineOffsetText(frame.outer)})</span>
+          )}
         </dd>
         <dt>Total height</dt>
         <dd>
-          {fmt(heights.total)} mm{hasPocket && <> (Bilresa {fmt(heights.proud)} mm proud)</>}
+          {fmt(heights.total)} mm{hasPocket && <> (Bilresa {fmt(heights.proud)} mm proud{extension && extension.rise > 0.005 ? ' of the rim' : ''})</>}
         </dd>
         <dt>Volume</dt>
         <dd className={statsStale ? 'stale' : undefined}>

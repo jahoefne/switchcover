@@ -5,13 +5,16 @@
  * World → SVG: (x, y) → (x, −y); a world CCW rotation θ is `rotate(−θ)` in SVG.
  *
  * Both views draw the cover outline (which may be off the plate centre: frame.outer.cx/cy), the
- * plate at the origin, the module grid at its anchors (shifted by grid.offsetX/Y) and the
- * features with their rotation; the view box is the union of the three outlines.
+ * plate at the origin, the module grid at its anchors (shifted by grid.offsetX/Y; an extension's
+ * grid is centred on the slab, frame.part.origin) and the features with their rotation; the view
+ * box is the union of the three outlines. The interactive view of an extension also draws the
+ * foot of each pocket's rim + cove.
  */
 import type { KeyboardEvent } from 'react';
 import type { CoverConfig } from '../../config/schema';
-import type { CoverFrame, Placed } from '../../geometry/contract';
+import type { CoverFrame, Placed, Vec2 } from '../../geometry/contract';
 import { moduleAnchor } from '../../layout/resolve';
+import { humpFoot } from '../../styles/extension';
 
 export interface Cell {
   col: number;
@@ -47,12 +50,18 @@ interface LayoutSvgProps {
   title?: string;
 }
 
+/** World position of the module grid's origin: the plate centre, or an extension's slab. */
+export function gridOrigin(frame: CoverFrame): Vec2 {
+  return frame.part.kind === 'extension' ? frame.part.origin : [0, 0];
+}
+
 /** World-space box of the cover outline, the plate and the module grid (what the view must show). */
 export function layoutBounds(config: CoverConfig, frame: CoverFrame): { minX: number; maxX: number; minY: number; maxY: number } {
   const { grid, plate } = config;
   const { outer } = frame;
-  const gx = grid.offsetX ?? 0;
-  const gy = grid.offsetY ?? 0;
+  const [ox, oy] = gridOrigin(frame);
+  const gx = (grid.offsetX ?? 0) + ox;
+  const gy = (grid.offsetY ?? 0) + oy;
   const boxes = [
     [outer.cx - outer.w / 2, outer.cx + outer.w / 2, outer.cy - outer.h / 2, outer.cy + outer.h / 2],
     [-plate.w / 2, plate.w / 2, -plate.h / 2, plate.h / 2],
@@ -69,6 +78,12 @@ export function layoutBounds(config: CoverConfig, frame: CoverFrame): { minX: nu
 export function LayoutSvg({ config, frame, interactive = false, selected, onSelect, className, title }: LayoutSvgProps) {
   const { grid, plate } = config;
   const b = layoutBounds(config, frame);
+  const [ox, oy] = gridOrigin(frame);
+  const anchorOf = (col: number, row: number): Vec2 => {
+    const [ax, ay] = moduleAnchor(grid, col, row);
+    return [ax + ox, ay + oy];
+  };
+  const extension = frame.part.kind === 'extension';
   const pad = interactive ? 4 : 2;
   // SVG y = −world y: the top of the view is the highest world y.
   const viewBox = `${b.minX - pad} ${-b.maxY - pad} ${b.maxX - b.minX + 2 * pad} ${b.maxY - b.minY + 2 * pad}`;
@@ -111,7 +126,7 @@ export function LayoutSvg({ config, frame, interactive = false, selected, onSele
       {!interactive && (
         <g className="grid-cells" pointerEvents="none">
           {cells.map((cell) => {
-            const [ax, ay] = moduleAnchor(grid, cell.col, cell.row);
+            const [ax, ay] = anchorOf(cell.col, cell.row);
             return (
               <rect
                 key={`${cell.col}-${cell.row}`}
@@ -127,7 +142,7 @@ export function LayoutSvg({ config, frame, interactive = false, selected, onSele
       )}
       {interactive &&
         cells.map((cell) => {
-          const [ax, ay] = moduleAnchor(grid, cell.col, cell.row);
+          const [ax, ay] = anchorOf(cell.col, cell.row);
           const m = moduleAt(cell.col, cell.row);
           const isSel = selected?.col === cell.col && selected?.row === cell.row;
           const role = m?.role ?? 'empty';
@@ -161,6 +176,9 @@ export function LayoutSvg({ config, frame, interactive = false, selected, onSele
         {frame.features.map((f) =>
           f.kind === 'pocket' ? (
             <g key={f.id}>
+              {interactive && extension && f.rimZ !== undefined && f.rimZ > frame.frontZ + 1e-6 && (
+                <ShapeEl placed={humpFoot(frame, f.placed)} className="f-rim" />
+              )}
               <ShapeEl placed={f.placed} className="f-pocket" />
               {interactive && f.holes.map((h, i) => <ShapeEl key={i} placed={h} className="f-hole" />)}
               {interactive && <ShapeEl placed={f.strip} className="f-strip" />}

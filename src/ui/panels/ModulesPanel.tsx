@@ -73,6 +73,7 @@ interface ModulesPanelProps {
 
 export function ModulesPanel({ config, frame, update, selected, onSelect }: ModulesPanelProps) {
   const { grid } = config;
+  const extension = config.part.kind === 'extension';
   const cell =
     selected.col < grid.cols && selected.row < grid.rows ? selected : { col: 0, row: 0 };
   const module = config.modules.find((m) => m.col === cell.col && m.row === cell.row);
@@ -98,11 +99,17 @@ export function ModulesPanel({ config, frame, update, selected, onSelect }: Modu
       />
       <div className="legend" aria-hidden="true">
         <span className="lg lg-pocket">Bilresa</span>
-        <span className="lg lg-outlet">Outlet</span>
-        <span className="lg lg-pass">Passthrough</span>
-        <span className="lg lg-hole">Access hole</span>
-        <span className="lg lg-cover">Cover outline</span>
+        {!extension && <span className="lg lg-outlet">Outlet</span>}
+        {!extension && <span className="lg lg-pass">Passthrough</span>}
+        {extension ? <span className="lg lg-rim">Rim + cove</span> : <span className="lg lg-hole">Access hole</span>}
+        <span className="lg lg-cover">{extension ? 'Extension outline' : 'Cover outline'}</span>
       </div>
+      {extension && (
+        <p className="panel-note">
+          The grid is the extension's own: one cell per module, laid out beside the plate. Only Bilresa pockets (and blanks)
+          make sense here; outlets and passthroughs are ignored.
+        </p>
+      )}
       <GridOffsetFields config={config} update={update} />
 
       <div className="module-editor">
@@ -111,7 +118,7 @@ export function ModulesPanel({ config, frame, update, selected, onSelect }: Modu
         </h3>
         {!module ? (
           <div className="empty-cell">
-            <p className="muted">This cell is empty (the plate stays covered).</p>
+            <p className="muted">{extension ? 'This cell is empty (plain slab).' : 'This cell is empty (the plate stays covered).'}</p>
             <button
               type="button"
               className="btn"
@@ -161,6 +168,9 @@ interface ModuleEditorProps {
 function ModuleEditor({ module: m, config, edit }: ModuleEditorProps) {
   const notchMode: NotchMode = m.bilresa?.notch === undefined ? 'default' : m.bilresa.notch ? 'on' : 'off';
   const isOpening = m.role === 'outlet' || m.role === 'passthrough';
+  // An extension holds pockets only; an opening left over from a cap layout stays selectable so it can be changed.
+  const roleOptions =
+    config.part.kind === 'extension' ? ROLE_OPTIONS.filter((o) => o.value === 'bilresa' || o.value === 'blank' || o.value === m.role) : ROLE_OPTIONS;
   const shape = isOpening ? openingShape(m.opening, m.role as 'outlet' | 'passthrough') : null;
 
   const setOpening = (patch: Partial<OpeningSpec>) =>
@@ -170,7 +180,7 @@ function ModuleEditor({ module: m, config, edit }: ModuleEditorProps) {
 
   return (
     <>
-      <SelectField label="Role" value={m.role} options={ROLE_OPTIONS} onChange={(role) => edit((x, c) => applyRole(x, role, c))} />
+      <SelectField label="Role" value={m.role} options={roleOptions} onChange={(role) => edit((x, c) => applyRole(x, role, c))} />
       {m.role !== 'blank' && (
         <>
           <Segmented label="Rotation" value={m.rot} options={ROTATIONS} onChange={(rot) => edit((x) => void (x.rot = rot))} />

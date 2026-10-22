@@ -504,6 +504,13 @@ select {
   stroke-dasharray: 2 2;
   vector-effect: non-scaling-stroke;
 }
+.layout-svg .f-rim {
+  fill: rgba(216, 212, 204, 0.08);
+  stroke: rgba(216, 212, 204, 0.55);
+  stroke-width: 0.8;
+  stroke-dasharray: 2 2;
+  vector-effect: non-scaling-stroke;
+}
 .layout-svg .f-notch {
   fill: none;
   stroke: var(--role-pocket);
@@ -586,6 +593,11 @@ select {
 .lg-hole::before {
   border-color: #c8d3e0;
   background: var(--bg);
+}
+.lg-rim::before {
+  border-color: rgba(216, 212, 204, 0.7);
+  border-style: dashed;
+  background: rgba(216, 212, 204, 0.12);
 }
 .lg-cover::before {
   border-color: var(--faint);
