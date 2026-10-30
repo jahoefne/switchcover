@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { CoverConfig } from '../../config/schema';
 import type { BuildStats, CoverFrame, Warning } from '../../geometry/contract';
 import type { AnyCoverStyle } from '../../styles';
@@ -23,6 +24,8 @@ interface ExportPanelProps {
   download(kind: 'export' | 'testFit', config: CoverConfig): Promise<ArrayBuffer>;
   shareUrl(): string;
   onSelectModule(cell: Cell): void;
+  actionHost?: HTMLElement | null;
+  onExportStateChange?(state: 'building' | 'complete' | 'error'): void;
 }
 
 export function saveBlob(blob: Blob, filename: string): void {
@@ -49,6 +52,8 @@ export function ExportPanel({
   download,
   shareUrl,
   onSelectModule,
+  actionHost,
+  onExportStateChange,
 }: ExportPanelProps) {
   const notify = useToast();
   const [running, setRunning] = useState<'export' | 'testFit' | null>(null);
@@ -61,12 +66,15 @@ export function ExportPanel({
 
   const run = async (kind: 'export' | 'testFit') => {
     setRunning(kind);
+    onExportStateChange?.('building');
     try {
       const stl = await download(kind, config);
       const name = stlFilename(config, kind);
       saveBlob(new Blob([stl], { type: 'model/stl' }), name);
       notify(`Saved ${name} (${fmt(stl.byteLength / 1024, 0)} KB).`, 'success');
+      onExportStateChange?.('complete');
     } catch (e) {
+      onExportStateChange?.('error');
       notify(`${kind === 'testFit' ? 'Test-fit export' : 'Export'} failed: ${e instanceof Error ? e.message : String(e)}`, 'error');
     } finally {
       setRunning(null);
@@ -84,6 +92,27 @@ export function ExportPanel({
       setFallbackUrl(url);
     }
   };
+
+  const actions = (
+    <>
+    <div className="export-actions">
+      <button type="button" className="btn btn-primary" disabled={running !== null} onClick={() => run('export')}>
+        <span aria-hidden="true" className="download-icon">↓</span>{running === 'export' ? 'Building STL…' : 'Download STL'}<span aria-hidden="true">↗</span>
+      </button>
+      <button type="button" className="btn" disabled={running !== null || !hasPocket} onClick={() => run('testFit')}>
+        {running === 'testFit' ? 'Building…' : 'Download test-fit STL'}
+      </button>
+      <button type="button" className="btn btn-share" onClick={copyLink}>Copy share link</button>
+    </div>
+    {fallbackUrl && (
+      <div className="share-fallback">
+        <button className="tool share-close" type="button" aria-label="Dismiss share link" onClick={() => setFallbackUrl(null)}>×</button>
+        <label htmlFor="share-url">Copy this link:</label>
+        <textarea id="share-url" readOnly value={fallbackUrl} rows={3} onFocus={(e) => e.currentTarget.select()} autoFocus />
+      </div>
+    )}
+    </>
+  );
 
   return (
     <>
@@ -127,23 +156,7 @@ export function ExportPanel({
         <p className="muted small">Face-down exports look mirrored from above in the slicer — that is correct.</p>
       )}
 
-      <div className="export-actions">
-        <button type="button" className="btn btn-primary" disabled={running !== null} onClick={() => run('export')}>
-          {running === 'export' ? 'Building STL…' : 'Download STL'}
-        </button>
-        <button type="button" className="btn" disabled={running !== null || !hasPocket} onClick={() => run('testFit')}>
-          {running === 'testFit' ? 'Building…' : 'Download test-fit STL'}
-        </button>
-        <button type="button" className="btn" onClick={copyLink}>
-          Copy share link
-        </button>
-      </div>
-      {fallbackUrl && (
-        <div className="share-fallback">
-          <label htmlFor="share-url">Copy this link:</label>
-          <textarea id="share-url" readOnly value={fallbackUrl} rows={3} onFocus={(e) => e.currentTarget.select()} autoFocus />
-        </div>
-      )}
+      {actionHost ? createPortal(actions, actionHost) : actions}
 
       <h3 className="warnings-title">
         Checks{' '}

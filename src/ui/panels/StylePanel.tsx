@@ -47,20 +47,26 @@ export function StylePanel({ config, style, params, limits, update }: StylePanel
 
   const options = styles.map((s) => ({ value: s.id, label: s.label }));
   if (!known) options.push({ value: config.cover.style, label: `${config.cover.style} (unknown)` });
+  const setStyle = (id: string) => update((c) => {
+    if (c.cover.style === id) return;
+    c.cover.style = id;
+    c.cover.styleParams = {};
+  });
 
   return (
     <>
+      <div className="style-gallery" role="group" aria-label="Cover styles">
+        {styles.map((s) => (
+          <button type="button" key={s.id} className={`style-tile style-${s.id}`} aria-label={`Choose ${s.label}`} aria-pressed={config.cover.style === s.id} onClick={() => setStyle(s.id)}>
+            <span className="style-miniature" aria-hidden="true"><span /></span><span>{s.label}</span>
+          </button>
+        ))}
+      </div>
       <SelectField
         label="Style"
         value={config.cover.style}
         options={options}
-        onChange={(id) =>
-          update((c) => {
-            if (c.cover.style === id) return;
-            c.cover.style = id;
-            c.cover.styleParams = {};
-          })
-        }
+        onChange={setStyle}
       />
       <p className="panel-note">{style.description}</p>
       {controls.length === 0 && <p className="muted small">This style has no parameters.</p>}

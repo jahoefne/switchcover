@@ -3,7 +3,7 @@
  * below 900 px). The URL hash is the source of truth for the config (useConfig); the
  * geometry worker builds previews and exports (useGeometry).
  */
-import { Component, useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { getPreset } from '../config/presets';
 import { featureId } from '../layout/resolve';
 import { deriveFrame, extensionPlacementText, fmt, mergeWarnings, topZ } from './derive';
@@ -48,6 +48,24 @@ function Main({ createClient }: { createClient: ClientFactory }) {
     return m ? { col: m.col, row: m.row } : { col: 0, row: 0 };
   });
   const modulesRef = useRef<HTMLDetailsElement>(null);
+  const [actionHost, setActionHost] = useState<HTMLDivElement | null>(null);
+  const [activeStep, setActiveStep] = useState('plate');
+  const [pulse, setPulse] = useState(0);
+  const [motionEnabled, setMotionEnabled] = useState(() => !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+  const [exportState, setExportState] = useState<'idle' | 'building' | 'complete' | 'error'>('idle');
+  useEffect(() => {
+    setPulse((value) => value + 1);
+    setExportState('idle');
+  }, [config]);
+
+  const navigate = (id: string) => {
+    setActiveStep(id);
+    const panel = document.getElementById(id) as HTMLDetailsElement | null;
+    if (panel) {
+      panel.open = true;
+      panel.scrollIntoView?.({ behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' });
+    }
+  };
 
   const mesh: ViewerMesh | null = useMemo(
     () => (shown ? { positions: shown.result.positions, indices: shown.result.indices } : null),
@@ -79,19 +97,32 @@ function Main({ createClient }: { createClient: ClientFactory }) {
   const extension = frame.part.kind === 'extension' ? frame.part : null;
 
   return (
-    <div className="app">
+    <div className={`app export-${exportState}${motionEnabled ? '' : ' motion-paused'}`}>
       <header className="app-header">
         <div className="brand">
           <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" width={22} height={22} />
-          <h1>switchcover</h1>
+          <h1>switch<span>cover</span></h1>
         </div>
-        <p className="tagline">Printable covers that turn existing light-switch plates into IKEA Bilresa smart-switch mounts.</p>
+        <p className="tagline">Retrofit your home.<span>BILRESA EDITION</span></p>
+        <div className="header-edition" aria-hidden="true">DESIGNED BY YOU.<br />BUILT FOR YOUR HOME.</div>
         <a className="gh-link" href={GITHUB_URL} target="_blank" rel="noreferrer">
           GitHub
         </a>
       </header>
+      <nav className="workflow" aria-label="Configuration steps">
+        {(['plate', 'modules', 'style', 'export'] as const).map((id, index) => (
+          <button type="button" key={id} className={activeStep === id ? 'active' : ''} aria-current={activeStep === id ? 'step' : undefined} onClick={() => navigate(id)}>
+            <span className="step-number">0{index + 1}</span><span>{id === 'export' ? 'Print' : id[0].toUpperCase() + id.slice(1)}</span><span className="step-line" aria-hidden="true" />
+          </button>
+        ))}
+        <span className="workflow-caption">YOUR HARDWARE. UPGRADED.</span>
+      </nav>
       <div className="app-body">
-        <aside className="sidebar" aria-label="Settings">
+        <aside className="sidebar" aria-label="Settings" onClickCapture={(event) => {
+          const id = (event.target as HTMLElement).closest('details.section')?.id;
+          if (id) setActiveStep(id === 'presets' ? 'plate' : id === 'advanced' ? 'export' : id);
+        }}>
+          <div className="inspector-intro"><span className="eyebrow">THE RETROFIT LAB</span><h2>Build your upgrade<span>.</span></h2><p>Old switch. New possibilities.</p></div>
           {hashWarnings.length > 0 && (
             <div className="banner banner-warning" role="alert">
               {hashWarnings.map((w, i) => (
@@ -139,6 +170,8 @@ function Main({ createClient }: { createClient: ClientFactory }) {
               download={geometry.download}
               shareUrl={shareUrl}
               onSelectModule={selectModule}
+              actionHost={actionHost}
+              onExportStateChange={setExportState}
             />
           </Section>
           <footer className="sidebar-footer">
@@ -149,9 +182,13 @@ function Main({ createClient }: { createClient: ClientFactory }) {
           </footer>
         </aside>
         <main className="stage">
-          <Viewer mesh={mesh} frame={frame} busy={geometry.busy} error={geometry.error} />
+          <Viewer mesh={mesh} frame={frame} busy={geometry.busy} error={geometry.error} pulse={pulse} exportState={exportState} onMotionChange={setMotionEnabled} />
         </main>
       </div>
+      <footer className="workshop-dock">
+        <div className="dock-summary"><span className="dock-beacon" aria-hidden="true" /><div><span className="eyebrow">{exportState === 'building' ? 'FABRICATING YOUR FILE' : exportState === 'complete' ? 'STL DELIVERED' : 'FROM SCREEN TO REALITY'}</span><strong>{fmt(frame.outer.w)} × {fmt(frame.outer.h)} × {fmt(topZ(frame))} <small>mm</small></strong></div></div>
+        <div className="dock-actions" ref={setActionHost} />
+      </footer>
     </div>
   );
 }

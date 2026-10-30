@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './ui/App';
 import './ui/app.css';
+import './ui/neon.css';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root element missing');

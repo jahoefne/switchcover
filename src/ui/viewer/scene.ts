@@ -24,6 +24,7 @@ import { BILRESA_VARIANTS } from '../../config/defaults';
 import type { BilresaVariant, CoverFrame } from '../../geometry/contract';
 import { needsRefit } from './fit';
 import { bilresaGhostPlacement } from './ghost';
+import { assemblyOffsets } from './assembly';
 
 export interface ViewerMesh {
   positions: Float32Array;
@@ -37,13 +38,9 @@ export interface SceneOptions {
 }
 
 const COLORS = {
-  background: 0x15171c,
-  wall: 0x1d2026,
-  gridMajor: 0x3a404c,
-  gridMinor: 0x272b33,
-  cover: 0xd8d4cc,
-  plate: 0x5aa9ff,
-  bilresa: 0xf2efe8,
+  cover: 0xe1e5db,
+  plate: 0x46f6ff,
+  bilresa: 0xf4f1e6,
 };
 
 /** Crease angle for normals: smooth across gentle curvature, sharp at real edges. */
@@ -83,7 +80,12 @@ export class CoverScene {
   private readonly stlCache = new Map<BilresaVariant, Promise<THREE.BufferGeometry>>();
   private readonly loader = new STLLoader();
   private frame: CoverFrame | null = null;
-  private options: SceneOptions = { showPlate: true, showBilresa: true, wireframe: false };
+  private options: SceneOptions = { showPlate: false, showBilresa: true, wireframe: false };
+  private assemblyProgress = 0;
+  private exploded = false;
+  private motionEnabled = !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  private animation: { start: number; from: number; to: number; duration: number } | null = null;
+  private pulseUntil = 0;
   private ghostGeneration = 0;
   private hasMesh = false;
   /** Outer w, h, cx, cy the camera was last fitted to (refit when the outline changes a lot). */
@@ -94,46 +96,37 @@ export class CoverScene {
   onGhostError: ((message: string) => void) | null = null;
 
   constructor(host: HTMLElement) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    this.renderer.setClearColor(COLORS.background, 1);
+    this.renderer.setClearColor(0x000000, 0);
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.25;
     this.canvas = this.renderer.domElement;
     this.canvas.setAttribute('aria-label', '3D preview of the cover');
     this.canvas.setAttribute('role', 'img');
     host.appendChild(this.canvas);
 
     const { scene } = this;
-    scene.background = new THREE.Color(COLORS.background);
 
     // Soft lighting: sky/ground hemisphere + a key light from the upper left front + a fill.
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x2a2d35, 1.1));
+    scene.add(new THREE.HemisphereLight(0xd8f4ff, 0x1b1638, 1.6));
     const key = new THREE.DirectionalLight(0xffffff, 1.9);
     key.position.set(-120, 160, 260);
     scene.add(key);
-    const fill = new THREE.DirectionalLight(0xdde6ff, 0.45);
+    const fill = new THREE.DirectionalLight(0x46f6ff, 1.3);
     fill.position.set(200, -80, 140);
     scene.add(fill);
 
-    // Wall plane at z = 0 (slightly behind to avoid z-fighting with the cover base) + grid.
-    const wallGeo = new THREE.PlaneGeometry(3000, 3000);
-    const wallMat = new THREE.MeshStandardMaterial({ color: COLORS.wall, roughness: 1, metalness: 0 });
-    const wall = new THREE.Mesh(wallGeo, wallMat);
-    wall.position.z = -0.3;
-    scene.add(wall);
-    const grid = new THREE.GridHelper(1000, 100, COLORS.gridMajor, COLORS.gridMinor);
-    grid.rotation.x = Math.PI / 2; // XZ → XY (the wall)
-    grid.position.z = -0.15;
-    const gridMat = grid.material as THREE.Material;
-    gridMat.transparent = true;
-    gridMat.opacity = 0.55;
-    scene.add(grid);
-    this.disposables.push(wallGeo, wallMat, grid.geometry, gridMat);
+    // Transparent canvas lets the animated reactor chamber surround the real geometry.
+    const rim = new THREE.DirectionalLight(0xff4cce, 2.2);
+    rim.position.set(-180, 70, -90);
+    scene.add(rim);
 
     // Cover.
     this.coverMaterial = new THREE.MeshStandardMaterial({
       color: COLORS.cover,
-      roughness: 0.82,
-      metalness: 0,
+      roughness: 0.46,
+      metalness: 0.15,
       flatShading: false,
       side: THREE.FrontSide,
     });
@@ -155,9 +148,9 @@ export class CoverScene {
       color: COLORS.bilresa,
       roughness: 0.55,
       metalness: 0,
-      transparent: true,
-      opacity: 0.55,
-      depthWrite: false,
+      transparent: false,
+      opacity: 1,
+      depthWrite: true,
     });
     this.plateGroup.renderOrder = 10;
     scene.add(this.plateGroup, this.bilresaGroup);
@@ -175,7 +168,11 @@ export class CoverScene {
     if (this.disposed || this.raf) return;
     this.raf = requestAnimationFrame(() => {
       this.raf = 0;
-      if (!this.disposed) this.renderer.render(this.scene, this.camera);
+      if (!this.disposed) {
+        this.tick(performance.now());
+        this.renderer.render(this.scene, this.camera);
+        if (this.animation || performance.now() < this.pulseUntil) this.requestRender();
+      }
     });
   };
 
@@ -204,7 +201,10 @@ export class CoverScene {
       this.cover.geometry = geometry;
       const first = !this.hasMesh;
       this.hasMesh = true;
-      if (first) this.fitView();
+      if (first) {
+        this.fitView();
+        this.revealAssembly();
+      } else if (this.motionEnabled) this.pulseUntil = performance.now() + 650;
     }
     old.dispose();
     this.requestRender();
@@ -223,10 +223,58 @@ export class CoverScene {
     this.options = { ...this.options, ...options };
     this.coverMaterial.wireframe = this.options.wireframe;
     // Lit wire lines read too dark on the dark background; lift them a little.
-    this.coverMaterial.emissive.setHex(this.options.wireframe ? 0x6a6660 : 0x000000);
-    this.plateGroup.visible = this.options.showPlate;
+    this.coverMaterial.emissive.setHex(this.options.wireframe ? 0x0a7b85 : 0x000000);
+    this.plateGroup.visible = this.options.showPlate || this.assemblyProgress > 0.001;
     this.bilresaGroup.visible = this.options.showBilresa;
     this.requestRender();
+  }
+
+  setMotionEnabled(enabled: boolean): void {
+    this.motionEnabled = enabled;
+    if (!enabled) {
+      this.animation = null;
+      this.pulseUntil = 0;
+      this.assemblyProgress = this.exploded ? 1 : 0;
+    }
+    this.requestRender();
+  }
+
+  setExploded(exploded: boolean): void {
+    this.exploded = exploded;
+    this.animateAssembly(exploded ? 1 : 0);
+  }
+
+  revealAssembly(): void {
+    if (this.disposed || !this.hasMesh) return;
+    this.exploded = false;
+    this.assemblyProgress = this.motionEnabled ? 1 : 0;
+    this.animateAssembly(0, 1600);
+  }
+
+  private animateAssembly(to: number, duration = 1100): void {
+    if (this.disposed) return;
+    if (this.motionEnabled) this.animation = { start: performance.now(), from: this.assemblyProgress, to, duration };
+    else { this.assemblyProgress = to; this.animation = null; }
+    this.requestRender();
+  }
+
+  private tick(now: number): void {
+    if (this.animation) {
+      const { start, from, to, duration } = this.animation;
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - (1 - t) ** 4;
+      this.assemblyProgress = from + (to - from) * eased;
+      if (t >= 1) this.animation = null;
+    }
+    const size = this.frame ? Math.max(this.frame.outer.w, this.frame.outer.h) : 90;
+    const offsets = assemblyOffsets(this.assemblyProgress, size);
+    this.cover.position.z = offsets.cover;
+    this.plateGroup.position.z = offsets.plate;
+    this.bilresaGroup.position.z = offsets.bilresa;
+    this.plateGroup.visible = this.options.showPlate || this.assemblyProgress > 0.001;
+    const pulse = Math.max(0, (this.pulseUntil - now) / 650);
+    this.coverMaterial.emissive.setHex(this.options.wireframe ? 0x0a7b85 : 0x0b6973);
+    this.coverMaterial.emissiveIntensity = this.options.wireframe ? 1 : pulse * 0.5;
   }
 
   /**
@@ -249,9 +297,9 @@ export class CoverScene {
     const sphere = box.getBoundingSphere(new THREE.Sphere());
     const vFov = THREE.MathUtils.degToRad(this.camera.fov);
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * this.camera.aspect);
-    const dist = (sphere.radius / Math.sin(Math.min(vFov, hFov) / 2)) * 1.08;
+    const dist = (sphere.radius / Math.sin(Math.min(vFov, hFov) / 2)) * 1.3;
     // Mostly frontal, slightly from the upper right so the depth reads.
-    const dir = new THREE.Vector3(0.22, 0.28, 1).normalize();
+    const dir = new THREE.Vector3(0.48, 0.3, 1).normalize();
     this.controls.target.copy(sphere.center);
     this.camera.position.copy(sphere.center).addScaledVector(dir, dist);
     this.camera.near = Math.max(0.5, dist / 100);

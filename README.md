@@ -36,6 +36,11 @@ Live: <https://jahoefne.github.io/switchcover/>
   stay centred on the plate.
 - **Live 3D preview** (three.js) with translucent ghosts of the plate and the Bilresa, a
   checks list (warnings with the module they refer to), height and weight estimates.
+- **Cyberpunk interface**: glowing reactor rings, a perspective grid, configuration-change
+  pulses and an animated assembly reveal using the actual plate, cover and Bilresa models.
+  Separate/reassemble the layers or replay the reveal in the preview. Visual style tiles and
+  a persistent export bar keep the main actions within reach. The Motion control pauses the
+  effects, and the interface respects reduced-motion preferences. Fonts are served locally.
 - **Download STL** (rebuilt at export quality, binary STL in the print orientation) and a
   **test-fit STL**: one pocket with a 3 mm rim, built from the same feature code (nested
   pocket, strip indent and ledges, access hole, finger notch), for checking the Bilresa fit
